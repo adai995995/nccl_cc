@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 // ============================================================================
 // 全局变量
@@ -18,6 +19,7 @@
 // Shadow Pool
 struct ShadowRequest g_shadow_pool[NCCL_CC_MAX_QP][NCCL_CC_MAX_SHADOW_SLOTS];
 int g_shadow_pool_next[NCCL_CC_MAX_QP];
+uint32_t g_shadow_pool_shadow_gen_next[NCCL_CC_MAX_QP];
 pthread_mutex_t g_shadow_pool_mutex[NCCL_CC_MAX_QP];
 int g_shadow_pool_initialized = 0;
 
@@ -28,6 +30,8 @@ int g_cc_pool_initialized = 0;
 
 // 全局状态
 int g_aimd_enabled = -1;  // -1: 未检查, 0: 禁用, 1: 启用
+int g_cc_metrics_enabled = -1;  // Phase 2 观测 NCCL_CC_METRICS
+static int g_cc_epoch_enabled = -1;  // Phase 4 NCCL_CC_EPOCH_ENABLE
 
 // ============================================================================
 // 工具函数
@@ -51,6 +55,158 @@ int ncclIbIsAIMDEnabled(void) {
     return g_aimd_enabled;
 }
 
+int ncclIbCcMetricsEnabled(void) {
+    if (g_cc_metrics_enabled == -1) {
+        const char* env = getenv(NCCL_CC_METRICS_ENV);
+        g_cc_metrics_enabled = (env && atoi(env) > 0) ? 1 : 0;
+    }
+    return g_cc_metrics_enabled;
+}
+
+int ncclIbCcEpochEnabled(void) {
+    if (g_cc_epoch_enabled == -1) {
+        const char* env = getenv(NCCL_CC_EPOCH_ENABLE_ENV);
+        g_cc_epoch_enabled = (env && atoi(env) > 0 && ncclIbIsAIMDEnabled()) ? 1 : 0;
+    }
+    return g_cc_epoch_enabled;
+}
+
+int ncclCcGetEffectiveWindowForSend(const struct CollectiveCC* cc) {
+    if (!cc) return 0;
+    if (ncclIbCcEpochEnabled()) {
+        int ew = cc->effective_window;
+        if (ew > 0) return ew;
+    }
+    return cc->lib_window;
+}
+
+uint64_t ncclIbGetNanos(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static uint64_t g_hint_refresh_min_ns = 10000000ULL; /* 10ms 默认 */
+static void ncclCcHintEnsureRefreshMinOnce(void) {
+    static int done;
+    if (done) return;
+    done = 1;
+    const char* e = getenv(NCCL_CC_HINT_REFRESH_MIN_NS_ENV);
+    if (e && e[0]) {
+        uint64_t v = (uint64_t)strtoull(e, NULL, 10);
+        if (v < 1000000ULL) g_hint_refresh_min_ns = v * 1000000ULL;
+        else g_hint_refresh_min_ns = v;
+    }
+}
+
+int ncclIbCcHintEnabled(void) {
+    static int g = -1;
+    if (g == -1) {
+        const char* e = getenv(NCCL_CC_HINT_ENABLE_ENV);
+        g = (e && atoi(e) > 0) ? 1 : 0;
+    }
+    return g && xcclTelemetryHintTransportIsMapped();
+}
+
+static void ncclCcRecomputeHintValid(struct CollectiveCC* cc, uint64_t now_ns) {
+    if (!cc->hint_read_ok || cc->hint.version == 0) {
+        cc->hint_valid = 0;
+        return;
+    }
+    if (now_ns - cc->hint.ts_ns > cc->hint_ttl_ns) {
+        cc->hint_valid = 0;
+        return;
+    }
+    cc->hint_valid = 1;
+}
+
+void ncclCcOnCollectiveBegin(struct CollectiveCC* cc, uint64_t now_ns) {
+    if (!cc || !cc->enabled) return;
+    if (!ncclIbCcHintEnabled()) return;
+    ncclCcHintEnsureRefreshMinOnce();
+
+    pthread_mutex_lock(&cc->mutex);
+    ncclCcRecomputeHintValid(cc, now_ns);
+    if (cc->hint_last_refresh_ns != 0 && (now_ns - cc->hint_last_refresh_ns) < g_hint_refresh_min_ns) {
+        pthread_mutex_unlock(&cc->mutex);
+        return;
+    }
+    pthread_mutex_unlock(&cc->mutex);
+
+    TelemetryHintSnapshot snap;
+    ncclResult_t r = xcclTelemetryHintReadSnapshot(&snap);
+
+    pthread_mutex_lock(&cc->mutex);
+    if (r == ncclSuccess) {
+        memcpy(&cc->hint, &snap, sizeof(snap));
+        cc->hint_read_ok = 1;
+        cc->hint_last_refresh_ns = now_ns;
+    } else {
+        cc->hint_read_failures++;
+        cc->hint_read_ok = 0;
+    }
+    ncclCcRecomputeHintValid(cc, now_ns);
+    pthread_mutex_unlock(&cc->mutex);
+}
+
+void ncclCcRefreshHintIfNeeded(struct CollectiveCC* cc, uint64_t now_ns) {
+    ncclCcOnCollectiveBegin(cc, now_ns);
+}
+
+int ncclCcHintIsValid(const struct CollectiveCC* cc, uint64_t now_ns) {
+    if (!cc) return 0;
+    struct CollectiveCC* c = (struct CollectiveCC*)cc;
+    pthread_mutex_lock(&c->mutex);
+    ncclCcRecomputeHintValid(c, now_ns);
+    int v = c->hint_valid;
+    pthread_mutex_unlock(&c->mutex);
+    return v;
+}
+
+// Phase 2：仅在合法 CQE（pending-- 后 prev>0）路径更新；与 chunk_rtts（max）同源更新顺序
+static void ncclIbChunkObservationOnValidCqe(struct CollectiveCC* cc, int chunk_slot, uint64_t wr_rtt, uint64_t now) {
+    ncclIbUpdateChunkRTTOnly(cc, chunk_slot, wr_rtt);
+    if (!ncclIbCcMetricsEnabled()) return;
+    if (!cc || chunk_slot < 0 || chunk_slot >= cc->chunk_tracker.max_chunks) return;
+
+    __atomic_fetch_add(&cc->chunk_tracker.chunk_lat_sum_us[chunk_slot], wr_rtt, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&cc->chunk_tracker.chunk_lat_samples[chunk_slot], 1u, __ATOMIC_RELAXED);
+
+    uint64_t* minp = &cc->chunk_tracker.chunk_lat_min_us[chunk_slot];
+    uint64_t oldm, newm;
+    do {
+        oldm = __atomic_load_n(minp, __ATOMIC_RELAXED);
+        if (wr_rtt >= oldm) break;
+        newm = wr_rtt;
+    } while (!__atomic_compare_exchange_n(minp, &oldm, newm, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+
+    uint64_t* fp = &cc->chunk_tracker.chunk_first_cqe_us[chunk_slot];
+    uint64_t oldf, nf;
+    do {
+        oldf = __atomic_load_n(fp, __ATOMIC_RELAXED);
+        nf = (oldf == 0) ? now : ((oldf < now) ? oldf : now);
+    } while (!__atomic_compare_exchange_n(fp, &oldf, nf, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+
+    uint64_t* lp = &cc->chunk_tracker.chunk_last_cqe_us[chunk_slot];
+    uint64_t oldl, newl;
+    do {
+        oldl = __atomic_load_n(lp, __ATOMIC_RELAXED);
+        newl = (now > oldl) ? now : oldl;
+    } while (!__atomic_compare_exchange_n(lp, &oldl, newl, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+}
+
+static void ncclIbAppendMetricsBucket(struct CollectiveCC* cc, const struct NcclCcChunkSample* s) {
+    if (!cc || !s) return;
+    pthread_mutex_lock(&cc->mutex);
+    cc->metrics_bucket_sum_avg_us += s->avg_completion_us;
+    cc->metrics_bucket_sum_max_us += s->max_completion_us;
+    cc->metrics_bucket_sum_span_us += s->span_us;
+    cc->metrics_bucket_sum_service_us += s->service_time_us;
+    cc->metrics_bucket_chunk_count++;
+    cc->metrics_bucket_last_finalize_us = ncclIbGetMicros();
+    pthread_mutex_unlock(&cc->mutex);
+}
+
 // ============================================================================
 // Shadow Pool 管理
 // ============================================================================
@@ -63,6 +219,7 @@ ncclResult_t ncclIbInitShadowPool(void) {
     for (int qp = 0; qp < NCCL_CC_MAX_QP; qp++) {
         memset(g_shadow_pool[qp], 0, sizeof(g_shadow_pool[qp]));
         g_shadow_pool_next[qp] = 0;
+        g_shadow_pool_shadow_gen_next[qp] = 0;
         pthread_mutex_init(&g_shadow_pool_mutex[qp], NULL);
     }
     
@@ -70,8 +227,8 @@ ncclResult_t ncclIbInitShadowPool(void) {
     return ncclSuccess;
 }
 
-int ncclIbAllocateShadowSlot(int qp_index, uint64_t original_wr_id, 
-                              int cc_index, int chunk_id) {
+int ncclIbAllocateShadowSlot(int qp_index, uint64_t original_wr_id,
+                              int cc_index, int chunk_slot, uint64_t chunk_generation) {
     if (qp_index < 0 || qp_index >= NCCL_CC_MAX_QP) {
         return -1;
     }
@@ -87,7 +244,9 @@ int ncclIbAllocateShadowSlot(int qp_index, uint64_t original_wr_id,
             // 找到空slot
             g_shadow_pool[qp_index][slot].original_wr_id = original_wr_id;
             g_shadow_pool[qp_index][slot].cc_index = cc_index;
-            g_shadow_pool[qp_index][slot].chunk_id = chunk_id;
+            g_shadow_pool[qp_index][slot].chunk_slot = (uint32_t)chunk_slot;
+            g_shadow_pool[qp_index][slot].chunk_generation = chunk_generation;
+            g_shadow_pool[qp_index][slot].shadow_generation = g_shadow_pool_shadow_gen_next[qp_index]++;
             g_shadow_pool[qp_index][slot].active = 1;
             g_shadow_pool[qp_index][slot].send_timestamp = ncclIbGetMicros();
             
@@ -176,7 +335,15 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
     cc->comm_key = key;
     cc->collective_id = collective_id;
     cc->enabled = 1;
-    
+    cc->hint_ttl_ns = 100000000ULL;
+    {
+        const char* htt = getenv(NCCL_CC_HINT_TTL_NS_ENV);
+        if (htt && htt[0]) {
+            uint64_t v = (uint64_t)strtoull(htt, NULL, 10);
+            if (v >= 1000000ULL && v <= 10000000000ULL) cc->hint_ttl_ns = v;
+        }
+    }
+
     // 初始化窗口与 AIMD 参数（可由环境变量覆盖，便于 A/B 测试）
     int min_w = 16, max_w = 512, lib_w = 256;
     double alpha_val = 1.0, beta_val = 0.5;
@@ -205,6 +372,16 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
     cc->update_interval_us = uiu;
     cc->last_update_time = 0;
 
+    cc->device_cap = max_w;
+    cc->epoch_interval_ns = 1000000ULL;
+    {
+        const char* ein = getenv(NCCL_CC_EPOCH_INTERVAL_NS_ENV);
+        if (ein && ein[0]) {
+            uint64_t vn = (uint64_t)strtoull(ein, NULL, 10);
+            if (vn >= 100000ULL && vn <= 1000000000ULL) cc->epoch_interval_ns = vn;
+        }
+    }
+
     { static int _aimd_env_logged = 0; if (from_env && !_aimd_env_logged) { _aimd_env_logged = 1; INFO(NCCL_ENV, "AIMD params (from env): min_window=%d max_window=%d lib_window=%d alpha=%.2f beta=%.2f update_interval_us=%lu", min_w, max_w, lib_w, alpha_val, beta_val, (unsigned long)uiu); } }
     
     // 初始化RTT参数
@@ -217,26 +394,51 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
     
     // 初始化ChunkTracker
     int max_chunks = estimated_chunks > 0 ? estimated_chunks : 1024;
+    if (max_chunks < 1) max_chunks = 1;
+    if (max_chunks > 1024) {
+        WARN("NET/IB: estimated_chunks=%d exceeds WR-ID chunk_slot bits, clamp to 1024", max_chunks);
+        max_chunks = 1024;
+    }
     cc->chunk_tracker.max_chunks = max_chunks;
+    // I0/R1：在途 chunk 不应超过可区分 slot 数（见设计 §5.1）
+    if (cc->lib_window > max_chunks) cc->lib_window = max_chunks;
     cc->chunk_tracker.chunk_send_times = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
     cc->chunk_tracker.chunk_rtts = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
     cc->chunk_tracker.chunk_wr_counts = (int*)malloc(max_chunks * sizeof(int));
     cc->chunk_tracker.chunk_completed_wrs = (volatile int*)malloc(max_chunks * sizeof(int));
     cc->chunk_tracker.chunk_status = (volatile int*)malloc(max_chunks * sizeof(int));
     cc->chunk_tracker.chunk_cqes_pending = (volatile int*)malloc(max_chunks * sizeof(int));
+    cc->chunk_tracker.chunk_finalized_flag = (volatile int*)malloc(max_chunks * sizeof(int));
+    cc->chunk_tracker.chunk_generation = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
     cc->chunk_tracker.chunk_original_wr_id = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
+    cc->chunk_tracker.chunk_first_cqe_us = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
+    cc->chunk_tracker.chunk_last_cqe_us = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
+    cc->chunk_tracker.chunk_lat_sum_us = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
+    cc->chunk_tracker.chunk_lat_min_us = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
+    cc->chunk_tracker.chunk_lat_samples = (uint32_t*)malloc(max_chunks * sizeof(uint32_t));
     
     if (!cc->chunk_tracker.chunk_send_times || !cc->chunk_tracker.chunk_rtts ||
         !cc->chunk_tracker.chunk_wr_counts || !cc->chunk_tracker.chunk_completed_wrs ||
         !cc->chunk_tracker.chunk_status || !cc->chunk_tracker.chunk_cqes_pending ||
-        !cc->chunk_tracker.chunk_original_wr_id) {
+        !cc->chunk_tracker.chunk_finalized_flag || !cc->chunk_tracker.chunk_generation ||
+        !cc->chunk_tracker.chunk_original_wr_id ||
+        !cc->chunk_tracker.chunk_first_cqe_us || !cc->chunk_tracker.chunk_last_cqe_us ||
+        !cc->chunk_tracker.chunk_lat_sum_us || !cc->chunk_tracker.chunk_lat_min_us ||
+        !cc->chunk_tracker.chunk_lat_samples) {
         free(cc->chunk_tracker.chunk_send_times);
         free(cc->chunk_tracker.chunk_rtts);
         free(cc->chunk_tracker.chunk_wr_counts);
         free((void*)cc->chunk_tracker.chunk_completed_wrs);
         free((void*)cc->chunk_tracker.chunk_status);
         free((void*)cc->chunk_tracker.chunk_cqes_pending);
+        free((void*)cc->chunk_tracker.chunk_finalized_flag);
+        free(cc->chunk_tracker.chunk_generation);
         free(cc->chunk_tracker.chunk_original_wr_id);
+        free(cc->chunk_tracker.chunk_first_cqe_us);
+        free(cc->chunk_tracker.chunk_last_cqe_us);
+        free(cc->chunk_tracker.chunk_lat_sum_us);
+        free(cc->chunk_tracker.chunk_lat_min_us);
+        free(cc->chunk_tracker.chunk_lat_samples);
         free(cc);
         pthread_mutex_unlock(&g_cc_pool_mutex);
         return ncclInternalError;
@@ -248,7 +450,15 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
     memset((void*)cc->chunk_tracker.chunk_completed_wrs, 0, max_chunks * sizeof(int));
     memset((void*)cc->chunk_tracker.chunk_status, 0, max_chunks * sizeof(int));
     memset((void*)cc->chunk_tracker.chunk_cqes_pending, 0, max_chunks * sizeof(int));
+    memset((void*)cc->chunk_tracker.chunk_finalized_flag, 0, max_chunks * sizeof(int));
+    memset(cc->chunk_tracker.chunk_generation, 0, max_chunks * sizeof(uint64_t));
     memset(cc->chunk_tracker.chunk_original_wr_id, 0, max_chunks * sizeof(uint64_t));
+    memset(cc->chunk_tracker.chunk_first_cqe_us, 0, max_chunks * sizeof(uint64_t));
+    memset(cc->chunk_tracker.chunk_last_cqe_us, 0, max_chunks * sizeof(uint64_t));
+    memset(cc->chunk_tracker.chunk_lat_sum_us, 0, max_chunks * sizeof(uint64_t));
+    for (int zi = 0; zi < max_chunks; zi++)
+        cc->chunk_tracker.chunk_lat_min_us[zi] = UINT64_MAX;
+    memset(cc->chunk_tracker.chunk_lat_samples, 0, max_chunks * sizeof(uint32_t));
     
     pthread_mutex_init(&cc->chunk_tracker.mutex, NULL);
     pthread_mutex_init(&cc->mutex, NULL);
@@ -264,11 +474,11 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
 // RTT 监测
 // ============================================================================
 
-void ncclIbRecordChunkSend(struct CollectiveCC* cc, int chunk_id, int num_wrs, int nqps) {
-    if (!cc || chunk_id < 0 || chunk_id >= cc->chunk_tracker.max_chunks) return;
+void ncclIbRecordChunkSend(struct CollectiveCC* cc, int chunk_slot, uint64_t chunk_generation, int num_wrs) {
+    if (!cc || chunk_slot < 0 || chunk_slot >= cc->chunk_tracker.max_chunks) return;
     
-    // CAS：仅抢到 0->1 或 2->1 的调用做初始化，防止多 QP/重入重复写 chunk_cqes_pending 等
-    int* status_ptr = (int*)&cc->chunk_tracker.chunk_status[chunk_id];
+    // CAS：仅抢到 0->1 或 2->1 的调用做初始化，防止重入重复初始化同一个 slot。
+    int* status_ptr = (int*)&cc->chunk_tracker.chunk_status[chunk_slot];
     int expected = 0;
     if (__atomic_compare_exchange_n(status_ptr, &expected, 1, 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
         // 从 idle 首次初始化
@@ -277,30 +487,44 @@ void ncclIbRecordChunkSend(struct CollectiveCC* cc, int chunk_id, int num_wrs, i
         if (!__atomic_compare_exchange_n(status_ptr, &expected, 1, 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED))
             return;  // 已是 1 (in-flight)，其他线程已初始化，直接返回
     }
-    cc->chunk_tracker.chunk_rtts[chunk_id] = 0;
-    cc->chunk_tracker.chunk_wr_counts[chunk_id] = num_wrs;
-    cc->chunk_tracker.chunk_completed_wrs[chunk_id] = 0;
-    cc->chunk_tracker.chunk_cqes_pending[chunk_id] = nqps > 0 ? nqps : 1;
-    cc->chunk_tracker.chunk_send_times[chunk_id] = ncclIbGetMicros();
+    cc->chunk_tracker.chunk_generation[chunk_slot] = chunk_generation;
+    cc->chunk_tracker.chunk_finalized_flag[chunk_slot] = 0;
+    cc->chunk_tracker.chunk_rtts[chunk_slot] = 0;
+    cc->chunk_tracker.chunk_wr_counts[chunk_slot] = num_wrs;
+    cc->chunk_tracker.chunk_completed_wrs[chunk_slot] = 0;
+    cc->chunk_tracker.chunk_cqes_pending[chunk_slot] = 0;
+    cc->chunk_tracker.chunk_send_times[chunk_slot] = ncclIbGetMicros();
+    if (cc->chunk_tracker.chunk_first_cqe_us) {
+        cc->chunk_tracker.chunk_first_cqe_us[chunk_slot] = 0;
+        cc->chunk_tracker.chunk_last_cqe_us[chunk_slot] = 0;
+        cc->chunk_tracker.chunk_lat_sum_us[chunk_slot] = 0;
+        cc->chunk_tracker.chunk_lat_min_us[chunk_slot] = UINT64_MAX;
+        cc->chunk_tracker.chunk_lat_samples[chunk_slot] = 0;
+    }
 #ifdef AIMD_DEBUG
     /* 短期放宽 rate-limit 至 50ms，便于确认 cid 是否 0,1,2… 轮转；确认后可改回 500000(500ms) */
-    { static uint64_t last=0; uint64_t n=ncclIbGetMicros(); if (n-last>50000) { printf("[AIMD] RecordChunkSend: cc=%p cid=%d nqps=%d cqes_pending=%d\n", (void*)cc, chunk_id, nqps>0?nqps:1, cc->chunk_tracker.chunk_cqes_pending[chunk_id]); last=n; } }
+    { static uint64_t last=0; uint64_t n=ncclIbGetMicros();
+      if (n-last>50000) {
+        printf("[AIMD] RecordChunkSend: cc=%p slot=%d gen=%lu cqes_pending=%d\n",
+               (void*)cc, chunk_slot, (unsigned long)chunk_generation, cc->chunk_tracker.chunk_cqes_pending[chunk_slot]);
+        last=n;
+      } }
 #endif
 }
 
-void ncclIbUpdateChunkWRRTT(struct CollectiveCC* cc, int chunk_id, uint64_t wr_rtt) {
-    if (!cc || chunk_id < 0 || chunk_id >= cc->chunk_tracker.max_chunks) return;
+void ncclIbUpdateChunkWRRTT(struct CollectiveCC* cc, int chunk_slot, uint64_t wr_rtt) {
+    if (!cc || chunk_slot < 0 || chunk_slot >= cc->chunk_tracker.max_chunks) return;
     
-    ncclIbUpdateChunkRTTOnly(cc, chunk_id, wr_rtt);
+    ncclIbUpdateChunkRTTOnly(cc, chunk_slot, wr_rtt);
     // 原子增加完成计数（仅当每个 WR 对应一个 CQE 时使用；Multi-QP 下改用 chunk_cqes_pending）
-    __sync_fetch_and_add(&cc->chunk_tracker.chunk_completed_wrs[chunk_id], 1);
+    __sync_fetch_and_add(&cc->chunk_tracker.chunk_completed_wrs[chunk_slot], 1);
 }
 
-void ncclIbUpdateChunkRTTOnly(struct CollectiveCC* cc, int chunk_id, uint64_t wr_rtt) {
-    if (!cc || chunk_id < 0 || chunk_id >= cc->chunk_tracker.max_chunks) return;
+void ncclIbUpdateChunkRTTOnly(struct CollectiveCC* cc, int chunk_slot, uint64_t wr_rtt) {
+    if (!cc || chunk_slot < 0 || chunk_slot >= cc->chunk_tracker.max_chunks) return;
     
     // 使用CAS更新chunk RTT（取max），无锁
-    uint64_t* chunk_rtt_ptr = &cc->chunk_tracker.chunk_rtts[chunk_id];
+    uint64_t* chunk_rtt_ptr = &cc->chunk_tracker.chunk_rtts[chunk_slot];
     uint64_t old_rtt, new_rtt;
     do {
         old_rtt = __atomic_load_n(chunk_rtt_ptr, __ATOMIC_RELAXED);
@@ -310,31 +534,67 @@ void ncclIbUpdateChunkRTTOnly(struct CollectiveCC* cc, int chunk_id, uint64_t wr
                                            0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
 }
 
-int ncclIbIsChunkComplete(struct CollectiveCC* cc, int chunk_id) {
-    if (!cc || chunk_id < 0 || chunk_id >= cc->chunk_tracker.max_chunks) return 0;
+int ncclIbIsChunkComplete(struct CollectiveCC* cc, int chunk_slot) {
+    if (!cc || chunk_slot < 0 || chunk_slot >= cc->chunk_tracker.max_chunks) return 0;
     
     pthread_mutex_lock(&cc->chunk_tracker.mutex);
-    int complete = (cc->chunk_tracker.chunk_status[chunk_id] == 1 &&
-                    cc->chunk_tracker.chunk_completed_wrs[chunk_id] >= 
-                    cc->chunk_tracker.chunk_wr_counts[chunk_id]);
+    int complete = (cc->chunk_tracker.chunk_status[chunk_slot] == 1 &&
+                    cc->chunk_tracker.chunk_completed_wrs[chunk_slot] >= 
+                    cc->chunk_tracker.chunk_wr_counts[chunk_slot]);
     pthread_mutex_unlock(&cc->chunk_tracker.mutex);
     
     return complete;
 }
 
-void ncclIbFinalizeChunkRTT(struct CollectiveCC* cc, int chunk_id) {
-    if (!cc || chunk_id < 0 || chunk_id >= cc->chunk_tracker.max_chunks) return;
+void ncclIbFinalizeChunkRTT(struct CollectiveCC* cc, int chunk_slot) {
+    if (!cc || chunk_slot < 0 || chunk_slot >= cc->chunk_tracker.max_chunks) return;
     
     uint64_t chunk_rtt = 0;
     int did_finalize = 0;
+    struct NcclCcChunkSample metrics_sample;
+    memset(&metrics_sample, 0, sizeof(metrics_sample));
+    int have_metrics_sample = 0;
+
+    // exactly-once finalize：CAS 抢到唯一执行权才 decrement inflight。
+    if (!__sync_bool_compare_and_swap(&cc->chunk_tracker.chunk_finalized_flag[chunk_slot], 0, 1)) {
+        return;
+    }
     
     pthread_mutex_lock(&cc->chunk_tracker.mutex);
-    if (cc->chunk_tracker.chunk_status[chunk_id] == 1) {
-        chunk_rtt = cc->chunk_tracker.chunk_rtts[chunk_id];
-        cc->chunk_tracker.chunk_status[chunk_id] = 0;  // 置 0 以便 chunk_id 复用
+    if (cc->chunk_tracker.chunk_status[chunk_slot] == 1) {
+        chunk_rtt = cc->chunk_tracker.chunk_rtts[chunk_slot];
+        if (ncclIbCcMetricsEnabled() && cc->chunk_tracker.chunk_lat_samples) {
+            uint64_t sum = __atomic_load_n(&cc->chunk_tracker.chunk_lat_sum_us[chunk_slot], __ATOMIC_RELAXED);
+            uint32_t smps = __atomic_load_n(&cc->chunk_tracker.chunk_lat_samples[chunk_slot], __ATOMIC_RELAXED);
+            uint64_t f = __atomic_load_n(&cc->chunk_tracker.chunk_first_cqe_us[chunk_slot], __ATOMIC_RELAXED);
+            uint64_t l = __atomic_load_n(&cc->chunk_tracker.chunk_last_cqe_us[chunk_slot], __ATOMIC_RELAXED);
+            uint64_t minlat = __atomic_load_n(&cc->chunk_tracker.chunk_lat_min_us[chunk_slot], __ATOMIC_RELAXED);
+            int nwr = cc->chunk_tracker.chunk_wr_counts[chunk_slot];
+            uint64_t send_ts = cc->chunk_tracker.chunk_send_times[chunk_slot];
+            uint64_t gen = cc->chunk_tracker.chunk_generation[chunk_slot];
+
+            if (smps == 0 || (uint32_t)nwr != smps || minlat == UINT64_MAX) {
+                cc->metrics_o1_violations++;
+            } else {
+                metrics_sample.chunk_seq = 0;
+                metrics_sample.chunk_generation = gen;
+                metrics_sample.chunk_slot = chunk_slot;
+                metrics_sample.max_completion_us = chunk_rtt;
+                metrics_sample.min_completion_us = minlat;
+                metrics_sample.avg_completion_us = sum / (uint64_t)smps;
+                metrics_sample.samples = smps;
+                metrics_sample.span_us = (f > 0 && l >= f) ? (l - f) : 0;
+                metrics_sample.service_time_us = (send_ts > 0 && l >= send_ts) ? (l - send_ts) : 0;
+                have_metrics_sample = 1;
+            }
+        }
+        cc->chunk_tracker.chunk_status[chunk_slot] = 0;  // 置 0 以便 chunk_slot 复用
         did_finalize = 1;
     }
     pthread_mutex_unlock(&cc->chunk_tracker.mutex);
+
+    if (have_metrics_sample)
+        ncclIbAppendMetricsBucket(cc, &metrics_sample);
     
     // 必须始终扣减 inflight，否则 chunk_rtt==0（如 send_time 未设或 RTT 为 0）时 inflight 永不降→窗口死锁、卡死
     if (did_finalize) {
@@ -344,10 +604,14 @@ void ncclIbFinalizeChunkRTT(struct CollectiveCC* cc, int chunk_id) {
             static uint64_t last_fin_print = 0;
             uint64_t now_us = ncclIbGetMicros();
             if (now_us - last_fin_print > 1000000) {
-                printf("[AIMD] FinalizeChunkRTT: cc=%p chunk=%d inflight_before=%d\n", (void*)cc, chunk_id, prev_inflight);
+                printf("[AIMD] FinalizeChunkRTT: cc=%p slot=%d inflight_before=%d\n", (void*)cc, chunk_slot, prev_inflight);
                 fflush(stdout);
                 last_fin_print = now_us;
             }
+        }
+        (void)__sync_fetch_and_add(&cc->finalized_chunks_total, 1ULL);
+        if (ncclIbCcEpochEnabled()) {
+            __atomic_store_n(&cc->epoch_due, 1u, __ATOMIC_RELEASE);
         }
     }
     if (chunk_rtt > 0)
@@ -399,56 +663,171 @@ void ncclIbUpdateCollectiveRTT(struct CollectiveCC* cc, uint64_t chunk_rtt) {
 }
 
 // ============================================================================
-// AIMD 控制
+// Phase 4：epoch 控制器（仅 ncclIbUpdateLIW 入口，design §5.2.2 (a)）
 // ============================================================================
 
-void ncclIbUpdateLIW(struct CollectiveCC* cc) {
-    if (!cc || !cc->enabled) return;
-    
-    uint64_t now = ncclIbGetMicros();
-    uint64_t time_since_update = (cc->last_update_time == 0) ?
-        cc->update_interval_us + 1 : (now - cc->last_update_time);
-    
-    // 控制周期检查
-    if (time_since_update < cc->update_interval_us) {
-        return;
-    }
-    
-    // 这个函数1ms才调用一次，加锁是可以接受的
+static void ncclCcEpochUpdate(struct CollectiveCC* cc, uint64_t now_ns) {
     pthread_mutex_lock(&cc->mutex);
-    
-    // 读取当前Max RTT（原子读取）
+    ncclCcRecomputeHintValid(cc, now_ns);
+
+    uint64_t now = ncclIbGetMicros();
+
+    /* queue_pressure 分母：上一轮已发布的 effective（设计 §4.3） */
+    int prev_eff = (cc->effective_window > 0) ? cc->effective_window : cc->lib_window;
+    if (prev_eff < 1) prev_eff = 1;
+    int inflight = __atomic_load_n(&cc->inflight_chunks, __ATOMIC_RELAXED);
+    (void)((double)inflight / (double)prev_eff); /* 预留：后续控制律可消费 queue_pressure */
+
     uint64_t current_max = __atomic_load_n(&cc->rtt_max, __ATOMIC_RELAXED);
-    
-    // EWMA更新（对tail敏感但不抖）
-    double alpha = 0.1;  // 平滑因子
+
+    double alpha = 0.1;
     if (cc->rtt_ewma == 0) {
         cc->rtt_ewma = (double)current_max;
     } else {
         cc->rtt_ewma = alpha * (double)current_max + (1.0 - alpha) * cc->rtt_ewma;
     }
-    
+
     double old_window = (double)cc->lib_window;
     double rtt_collective = cc->rtt_ewma;
-    
-    // AIMD算法
+
+    int hint_forbid_increase = 0;
+    int hint_cap = cc->max_window;
+    if (cc->hint_valid) {
+        if (cc->hint.flags & XCCL_HINT_F_SEVERE) hint_forbid_increase = 1;
+        float cnp = cc->hint.cnp_level;
+        if (cnp < 0.f) cnp = 0.f;
+        if (cnp > 1.f) cnp = 1.f;
+        const double w = 0.5;
+        double span = (double)(cc->max_window - cc->min_window);
+        if (span < 0.) span = 0.;
+        hint_cap = cc->min_window + (int)(span * (1.0 - w * (double)cnp));
+        if (hint_cap < cc->min_window) hint_cap = cc->min_window;
+        if (hint_cap > cc->max_window) hint_cap = cc->max_window;
+    }
+
     if (cc->rtt_target_high > 0 && rtt_collective > (double)cc->rtt_target_high) {
-        // 拥塞：乘性减
+        double new_window = old_window * cc->beta;
+        if (new_window < cc->min_window) new_window = cc->min_window;
+        cc->lib_window = (int)new_window;
+        cc->congestion_events++;
+        if (cc->congestion_events % 100 == 0) {
+            INFO(NCCL_NET, "AIMD[%lu]: Congestion (RTT=%.1f > %.1f), LIW %.1f -> %.1f",
+                 cc->collective_id, rtt_collective, (double)cc->rtt_target_high,
+                 old_window, new_window);
+        }
+    } else if (!hint_forbid_increase && cc->rtt_target_low > 0 && rtt_collective < (double)cc->rtt_target_low) {
+        double new_window = old_window + cc->alpha;
+        if (new_window > cc->max_window) new_window = cc->max_window;
+        cc->lib_window = (int)new_window;
+        cc->increase_events++;
+    }
+
+    int eff = cc->lib_window;
+    if (cc->device_cap < eff) eff = cc->device_cap;
+    if (hint_cap < eff) eff = hint_cap;
+    int mc = cc->chunk_tracker.max_chunks;
+    if (eff > mc) {
+        static int s_clamp_warn;
+        if (!s_clamp_warn) {
+            WARN("NET/IB: effective_window %d > max_chunks %d, clamp (Phase 4)", eff, mc);
+            s_clamp_warn = 1;
+        }
+        eff = mc;
+    }
+    cc->effective_window = eff;
+
+    cc->last_update_time = now;
+    cc->total_updates++;
+    cc->epoch_last_ts_ns = now_ns;
+
+    if (ncclIbCcMetricsEnabled() && cc->metrics_bucket_chunk_count > 0) {
+        uint64_t log_ms = 5000;
+        const char* elog = getenv(NCCL_CC_METRICS_LOG_MS_ENV);
+        if (elog && atoi(elog) > 0) log_ms = (uint64_t)atoi(elog);
+        uint64_t now_mu = ncclIbGetMicros();
+        if (cc->metrics_last_log_us == 0 || now_mu - cc->metrics_last_log_us >= log_ms * 1000ULL) {
+            INFO(NCCL_NET, "AIMD[%lu] CC metrics: bucket_chunks=%u sum_avg=%lu sum_max=%lu sum_span=%lu sum_svc=%lu o1_violations=%lu",
+                 (unsigned long)cc->collective_id,
+                 (unsigned)cc->metrics_bucket_chunk_count,
+                 (unsigned long)cc->metrics_bucket_sum_avg_us,
+                 (unsigned long)cc->metrics_bucket_sum_max_us,
+                 (unsigned long)cc->metrics_bucket_sum_span_us,
+                 (unsigned long)cc->metrics_bucket_sum_service_us,
+                 (unsigned long)cc->metrics_o1_violations);
+            cc->metrics_last_log_us = now_mu;
+        }
+    }
+
+    pthread_mutex_unlock(&cc->mutex);
+}
+
+static void ncclCcEpochUpdateIfDue(struct CollectiveCC* cc, uint64_t now_ns) {
+    if (!cc || !cc->enabled) return;
+    if (!ncclIbCcEpochEnabled()) return;
+
+    int interval_elapsed = (cc->epoch_last_ts_ns == 0) ||
+        (now_ns - cc->epoch_last_ts_ns >= cc->epoch_interval_ns);
+    uint32_t due = __atomic_load_n(&cc->epoch_due, __ATOMIC_RELAXED);
+    int due_set = (due != 0);
+    if (!interval_elapsed && !due_set) return;
+
+    (void)__atomic_exchange_n(&cc->epoch_due, 0u, __ATOMIC_ACQ_REL);
+    ncclCcEpochUpdate(cc, now_ns);
+}
+
+// ============================================================================
+// AIMD 控制
+// ============================================================================
+
+void ncclIbUpdateLIW(struct CollectiveCC* cc) {
+    if (!cc || !cc->enabled) return;
+
+    if (ncclIbCcHintEnabled()) {
+        ncclCcRefreshHintIfNeeded(cc, ncclIbGetNanos());
+    }
+
+    if (ncclIbCcEpochEnabled()) {
+        ncclCcEpochUpdateIfDue(cc, ncclIbGetNanos());
+        return;
+    }
+
+    uint64_t now = ncclIbGetMicros();
+    uint64_t time_since_update = (cc->last_update_time == 0) ?
+        cc->update_interval_us + 1 : (now - cc->last_update_time);
+
+    if (time_since_update < cc->update_interval_us) {
+        return;
+    }
+
+    pthread_mutex_lock(&cc->mutex);
+
+    uint64_t current_max = __atomic_load_n(&cc->rtt_max, __ATOMIC_RELAXED);
+
+    double alpha = 0.1;
+    if (cc->rtt_ewma == 0) {
+        cc->rtt_ewma = (double)current_max;
+    } else {
+        cc->rtt_ewma = alpha * (double)current_max + (1.0 - alpha) * cc->rtt_ewma;
+    }
+
+    double old_window = (double)cc->lib_window;
+    double rtt_collective = cc->rtt_ewma;
+
+    if (cc->rtt_target_high > 0 && rtt_collective > (double)cc->rtt_target_high) {
         double new_window = old_window * cc->beta;
         if (new_window < cc->min_window) {
             new_window = cc->min_window;
         }
         cc->lib_window = (int)new_window;
         cc->congestion_events++;
-        
+
         if (cc->congestion_events % 100 == 0) {
             INFO(NCCL_NET, "AIMD[%lu]: Congestion (RTT=%.1f > %.1f), LIW %.1f -> %.1f",
-                 cc->collective_id, rtt_collective, (double)cc->rtt_target_high, 
+                 cc->collective_id, rtt_collective, (double)cc->rtt_target_high,
                  old_window, new_window);
         }
-    } 
+    }
     else if (cc->rtt_target_low > 0 && rtt_collective < (double)cc->rtt_target_low) {
-        // 空闲：加性增
         double new_window = old_window + cc->alpha;
         if (new_window > cc->max_window) {
             new_window = cc->max_window;
@@ -456,11 +835,28 @@ void ncclIbUpdateLIW(struct CollectiveCC* cc) {
         cc->lib_window = (int)new_window;
         cc->increase_events++;
     }
-    // 中间区域：保持不变（稳定性）
-    
+
     cc->last_update_time = now;
     cc->total_updates++;
-    
+
+    if (ncclIbCcMetricsEnabled() && cc->metrics_bucket_chunk_count > 0) {
+        uint64_t log_ms = 5000;
+        const char* elog = getenv(NCCL_CC_METRICS_LOG_MS_ENV);
+        if (elog && atoi(elog) > 0) log_ms = (uint64_t)atoi(elog);
+        uint64_t now_mu = ncclIbGetMicros();
+        if (cc->metrics_last_log_us == 0 || now_mu - cc->metrics_last_log_us >= log_ms * 1000ULL) {
+            INFO(NCCL_NET, "AIMD[%lu] CC metrics: bucket_chunks=%u sum_avg=%lu sum_max=%lu sum_span=%lu sum_svc=%lu o1_violations=%lu",
+                 (unsigned long)cc->collective_id,
+                 (unsigned)cc->metrics_bucket_chunk_count,
+                 (unsigned long)cc->metrics_bucket_sum_avg_us,
+                 (unsigned long)cc->metrics_bucket_sum_max_us,
+                 (unsigned long)cc->metrics_bucket_sum_span_us,
+                 (unsigned long)cc->metrics_bucket_sum_service_us,
+                 (unsigned long)cc->metrics_o1_violations);
+            cc->metrics_last_log_us = now_mu;
+        }
+    }
+
     pthread_mutex_unlock(&cc->mutex);
 }
 
@@ -474,13 +870,15 @@ ncclResult_t ncclIbAIMDInit(void) {
 #else
     printf("[AIMD] AIMD build (release, no -DAIMD_DEBUG)\n"); fflush(stdout);
 #endif
+    NCCLCHECK(xcclTelemetryHintTransportInit());
+
     if (!ncclIbIsAIMDEnabled()) {
         return ncclSuccess;
     }
-    
+
     NCCLCHECK(ncclIbInitShadowPool());
     NCCLCHECK(ncclIbInitCCPool());
-    
+
     return ncclSuccess;
 }
 
@@ -498,18 +896,19 @@ ncclResult_t ncclIbPostSendWithCC(struct ncclIbSendComm* comm,
     if (!cc || !cc->enabled) {
         return ncclSuccess;  // 未启用CC，直接返回
     }
-    
+    ncclCcOnCollectiveBegin(cc, ncclIbGetNanos());
+
     // 🔴 关键：使用原子操作检查并预留窗口空间（避免竞争）
     int old_inflight, new_inflight;
     do {
         old_inflight = __sync_fetch_and_add(&cc->inflight_chunks, 0);  // 读取当前值
-        if (old_inflight >= cc->lib_window) {
+        if (old_inflight >= ncclCcGetEffectiveWindowForSend(cc)) {
             // 窗口已满，返回Success但让上层下一轮再试；限频日志确认是否因 Completion 未减 inflight 导致死锁
             static uint64_t last_print = 0;
             uint64_t now_us = ncclIbGetMicros();
             if (now_us - last_print > 1000000) {
                 printf("[AIMD] PostSend blocked: inflight=%d window=%d chunk_id=%d\n",
-                       old_inflight, cc->lib_window, chunk_id);
+                       old_inflight, ncclCcGetEffectiveWindowForSend(cc), chunk_id);
                 fflush(stdout);
                 last_print = now_us;
             }
@@ -518,8 +917,10 @@ ncclResult_t ncclIbPostSendWithCC(struct ncclIbSendComm* comm,
         new_inflight = old_inflight + 1;  // 预留1个chunk的空间
     } while (!__sync_bool_compare_and_swap(&cc->inflight_chunks, old_inflight, new_inflight));
     // 🔴 按 cc 单调分配 chunk_id_slot，与 p2p 一致，避免多路共 slot 导致 Finalize 少调、inflight 不降
-    int next = __sync_fetch_and_add(&cc->chunk_tracker.next_chunk_id, 1);
-    int chunk_id_slot = (int)((unsigned)next % (unsigned)cc->chunk_tracker.max_chunks);
+    uint64_t seq = __sync_fetch_and_add(&cc->chunk_tracker.next_chunk_seq, 1);
+    int chunk_id_slot = (int)((unsigned)seq % (unsigned)cc->chunk_tracker.max_chunks);
+    uint64_t chunk_generation = seq / (uint64_t)cc->chunk_tracker.max_chunks;
+    uint32_t chunk_generation_tag = (uint32_t)(chunk_generation & NCCL_CC_CHUNK_GENERATION_TAG_MASK);
     // 获取QP索引（简化：使用qp_num的低位作为索引）
     int qp_index = qp->qp->qp_num % NCCL_CC_MAX_QP;
     
@@ -540,8 +941,7 @@ ncclResult_t ncclIbPostSendWithCC(struct ncclIbSendComm* comm,
         return ncclInternalError;
     }
     
-    int nqps = ncclIbCommBaseGetNqpsPerRequest(&comm->base);
-    ncclIbRecordChunkSend(cc, chunk_id_slot, num_wrs, nqps > 0 ? nqps : 1);
+    ncclIbRecordChunkSend(cc, chunk_id_slot, chunk_generation, num_wrs);
     
     // 为每个WR分配Shadow Slot并编码wr_id
     for (int r = 0; r < nreqs; r++) {
@@ -549,12 +949,13 @@ ncclResult_t ncclIbPostSendWithCC(struct ncclIbSendComm* comm,
         uint64_t original_wr_id = wrs[r].wr_id;
         
         // 🔴 关键：分配Shadow Slot并存储原生ID（用 chunk_id_slot 保证 shadow->chunk_id 不越界）
-        int shadow_slot = ncclIbAllocateShadowSlot(qp_index, original_wr_id, cc_index, chunk_id_slot);
+        int shadow_slot = ncclIbAllocateShadowSlot(qp_index, original_wr_id, cc_index, chunk_id_slot, chunk_generation);
         if (shadow_slot < 0) {
             for (int j = 0; j < r; j++) {
                 if (NCCL_CC_IS_MY_WR(wrs[j].wr_id)) {
-                    int qp_i, cc_i, cid, sl;
-                    NCCL_CC_DECODE_WR_ID(wrs[j].wr_id, &qp_i, &cc_i, &cid, &sl);
+                    int qp_i, cc_i, chunk_slot_i, gen_tag_i, sl;
+                    NCCL_CC_DECODE_WR_ID(wrs[j].wr_id, &qp_i, &cc_i, &chunk_slot_i, &gen_tag_i, &sl);
+                    (void)cc_i; (void)chunk_slot_i; (void)gen_tag_i;
                     if (sl >= 0 && qp_i >= 0)
                         ncclIbReleaseShadowSlot(qp_i, sl);
                 }
@@ -562,7 +963,7 @@ ncclResult_t ncclIbPostSendWithCC(struct ncclIbSendComm* comm,
             __sync_fetch_and_sub(&cc->inflight_chunks, 1);
             return ncclSystemError;
         }
-        wrs[r].wr_id = NCCL_CC_ENCODE_WR_ID(qp_index, cc_index, chunk_id_slot, shadow_slot);
+        wrs[r].wr_id = NCCL_CC_ENCODE_WR_ID(qp_index, cc_index, chunk_id_slot, chunk_generation_tag, shadow_slot);
     }
     
     // ✅ 关键：窗口空间已在上面预留，这里不需要再增加
@@ -581,8 +982,9 @@ void ncclIbPostSendWithCCRollback(struct ncclIbSendComm* comm,
     (void)qp;
     for (int r = 0; r < nreqs; r++) {
         if (NCCL_CC_IS_MY_WR(wrs[r].wr_id)) {
-            int qp_i, cc_i, cid, sl;
-            NCCL_CC_DECODE_WR_ID(wrs[r].wr_id, &qp_i, &cc_i, &cid, &sl);
+            int qp_i, cc_i, chunk_slot_i, gen_tag_i, sl;
+            NCCL_CC_DECODE_WR_ID(wrs[r].wr_id, &qp_i, &cc_i, &chunk_slot_i, &gen_tag_i, &sl);
+            (void)cc_i; (void)chunk_slot_i; (void)gen_tag_i;
             if (sl >= 0 && qp_i >= 0)
                 ncclIbReleaseShadowSlot(qp_i, sl);
         }
@@ -606,60 +1008,124 @@ ncclResult_t ncclIbOnCompletionWithCC(struct ncclIbNetCommBase* commBase,
         return ncclSuccess;
     }
     
-    int qp_idx, cc_idx, chunk_id, slot;
-    NCCL_CC_DECODE_WR_ID(wc->wr_id, &qp_idx, &cc_idx, &chunk_id, &slot);
+    (void)commBase;
+    (void)devIndex;
+
+    int qp_idx, cc_idx, chunk_slot, chunk_generation_tag, shadow_slot;
+    NCCL_CC_DECODE_WR_ID(wc->wr_id, &qp_idx, &cc_idx, &chunk_slot, &chunk_generation_tag, &shadow_slot);
     
-    if (qp_idx < 0 || cc_idx < 0 || chunk_id < 0 || slot < 0 ||
+    if (qp_idx < 0 || cc_idx < 0 || chunk_slot < 0 || chunk_generation_tag < 0 || shadow_slot < 0 ||
         qp_idx >= NCCL_CC_MAX_QP || cc_idx >= NCCL_CC_MAX_COLLECTIVES ||
-        slot >= NCCL_CC_MAX_SHADOW_SLOTS)
+        shadow_slot >= NCCL_CC_MAX_SHADOW_SLOTS)
         return ncclSuccess;
     
+    // 与 finalize 共用 g_cc_pool_mutex，保证 completion 持有 cc 指针期间不会被释放。
+    pthread_mutex_lock(&g_cc_pool_mutex);
     struct CollectiveCC* cc = g_cc_pool[cc_idx];
+    ncclResult_t ret = ncclSuccess;
+    // C++：goto out_unlock_pool 不得跳过带初始化的局部变量，故提前声明
+    int effective_chunk_slot = -1;
+    uint64_t now = 0;
+    uint64_t wr_rtt = 0;
+    int prev = 0;
     
     uint64_t original_wr_id = 0;
     uint64_t send_time = 0;
+    uint64_t shadow_chunk_generation = 0;
+    uint32_t shadow_chunk_slot = 0;
+    int shadow_was_active = 0;
     
     pthread_mutex_lock(&g_shadow_pool_mutex[qp_idx]);
-    struct ShadowRequest* shadow = &g_shadow_pool[qp_idx][slot];
+    struct ShadowRequest* shadow = &g_shadow_pool[qp_idx][shadow_slot];
     if (shadow->active) {
+        shadow_was_active = 1;
         original_wr_id = shadow->original_wr_id;
-        chunk_id = shadow->chunk_id;
+        // 强一致校验所需字段在释放 slot 前先抓取快照
+        int shadow_cc_index = shadow->cc_index;
+        shadow_chunk_slot = shadow->chunk_slot;
+        shadow_chunk_generation = shadow->chunk_generation;
         send_time = shadow->send_timestamp;
-        if (cc && cc->chunk_tracker.chunk_original_wr_id && chunk_id >= 0 && chunk_id < cc->chunk_tracker.max_chunks)
-            cc->chunk_tracker.chunk_original_wr_id[chunk_id] = original_wr_id;
-        shadow->active = 0;  // 立即释放 Shadow，与 WR 绑定，不等 Chunk 完成
+        // wr_id 解码出的 cc/slot 必须与 shadow 一致，否则视为 stale。
+        if (shadow_cc_index != cc_idx || (int)shadow_chunk_slot != chunk_slot) {
+            shadow_was_active = 0;
+        }
+        if (shadow_was_active && cc && cc->chunk_tracker.chunk_original_wr_id &&
+            (int)shadow_chunk_slot >= 0 && (int)shadow_chunk_slot < cc->chunk_tracker.max_chunks) {
+            cc->chunk_tracker.chunk_original_wr_id[shadow_chunk_slot] = original_wr_id;
+        }
+        /* 不在此处释放 shadow：须先通过下方 stale/generation 校验且 pending-- 成功后再释放（Phase 1 §1.4） */
     }
     pthread_mutex_unlock(&g_shadow_pool_mutex[qp_idx]);
     
-    if (original_wr_id == 0 && cc && cc->chunk_tracker.chunk_original_wr_id &&
-        chunk_id >= 0 && chunk_id < cc->chunk_tracker.max_chunks)
-        original_wr_id = cc->chunk_tracker.chunk_original_wr_id[chunk_id];
-    
-    wc->wr_id = original_wr_id;
     // NCCL 的 wr_id 来自 req 数组偏移 (reqs[r]-base.reqs)<<(r*8)，第 0 个偏移为 0，故 original_wr_id==0 合法；
-    // 若此处用 original_wr_id==0 提前 return，会跳过 chunk_cqes_pending-- 与 FinalizeChunkRTT，导致 inflight 泄漏。
-    if (chunk_id < 0 || !cc || !cc->enabled)
-        return ncclSuccess;
-    // 🔴 越界保护：chunk_id 必须 < max_chunks，否则 chunk_cqes_pending 等会踩堆
-    if (chunk_id >= cc->chunk_tracker.max_chunks)
-        return ncclSuccess;
+    if (!cc || !cc->enabled) {
+        wc->wr_id = original_wr_id;
+        goto out_unlock_pool;
+    }
+
+    // 如果 shadow slot 的 original_wr_id 恰好为 0，使用 chunk_original_wr_id 兜底。
+    if (original_wr_id == 0 && cc->chunk_tracker.chunk_original_wr_id) {
+        int fallback_slot = shadow_was_active ? (int)shadow_chunk_slot : chunk_slot;
+        if (fallback_slot >= 0 && fallback_slot < cc->chunk_tracker.max_chunks) {
+            original_wr_id = cc->chunk_tracker.chunk_original_wr_id[fallback_slot];
+        }
+    }
+    wc->wr_id = original_wr_id;
     
-    uint64_t now = ncclIbGetMicros();
-    uint64_t wr_rtt = (send_time > 0 && now >= send_time) ? (now - send_time) : 0;
-    ncclIbUpdateChunkRTTOnly(cc, chunk_id, wr_rtt);
+    effective_chunk_slot = shadow_was_active ? (int)shadow_chunk_slot : chunk_slot;
+    if (effective_chunk_slot < 0 || effective_chunk_slot >= cc->chunk_tracker.max_chunks)
+        goto out_unlock_pool;
     
-    int prev = __sync_fetch_and_sub(&cc->chunk_tracker.chunk_cqes_pending[chunk_id], 1);
+    // stale CQE：如果 shadow 已经不 active，或 generation/slot 强一致校验失败，则跳过 pending-- 与 finalize。
+    if (!shadow_was_active) {
+        goto out_unlock_pool;
+    }
+
+    // Fast-path（tag）预过滤
+    if (((uint32_t)shadow_chunk_generation & NCCL_CC_CHUNK_GENERATION_TAG_MASK) != (uint32_t)chunk_generation_tag) {
+        goto out_unlock_pool;
+    }
+
+    // Strong-path：shadow 与 chunk_slot 必须强一致
+    if (cc->chunk_tracker.chunk_generation[effective_chunk_slot] != shadow_chunk_generation) {
+        goto out_unlock_pool;
+    }
+    
+    now = ncclIbGetMicros();
+    wr_rtt = (send_time > 0 && now >= send_time) ? (now - send_time) : 0;
+
+    prev = __sync_fetch_and_sub(&cc->chunk_tracker.chunk_cqes_pending[effective_chunk_slot], 1);
 #ifdef AIMD_DEBUG
     if (prev <= 0)
-        printf("[AIMD] BAD prev=%d cc=%p cid=%d\n", prev, (void*)cc, chunk_id);
-    { static uint64_t last_p1=0; uint64_t n=ncclIbGetMicros(); if (prev==1 && n-last_p1>500000) { printf("[AIMD] prev==1 -> Finalize cc=%p cid=%d\n", (void*)cc, chunk_id); last_p1=n; } }
+        printf("[AIMD] BAD prev=%d cc=%p slot=%d\n", prev, (void*)cc, effective_chunk_slot);
+    { static uint64_t last_p1=0; uint64_t n=ncclIbGetMicros(); if (prev==1 && n-last_p1>500000) { printf("[AIMD] prev==1 -> Finalize cc=%p slot=%d\n", (void*)cc, effective_chunk_slot); last_p1=n; } }
 #endif
-    if (prev == 1) {
-        __sync_fetch_and_add(&cc->chunk_tracker.chunk_completed_wrs[chunk_id],
-                            cc->chunk_tracker.chunk_wr_counts[chunk_id]);
-        ncclIbFinalizeChunkRTT(cc, chunk_id);
+    if (prev <= 0) {
+        // 发生 underflow 说明 pending/finalize 协议被破坏；尝试回滚 1，避免进一步负数扩散。
+        if (prev == 0) __sync_fetch_and_add(&cc->chunk_tracker.chunk_cqes_pending[effective_chunk_slot], 1);
+        goto out_unlock_pool;
     }
-    return ncclSuccess;
+    /* 合法 pending 递减后才释放本 CQE 对应的 shadow（避免 stale CQE 误伤同槽位新 WR） */
+    pthread_mutex_lock(&g_shadow_pool_mutex[qp_idx]);
+    {
+        struct ShadowRequest* sh = &g_shadow_pool[qp_idx][shadow_slot];
+        if (sh->active && sh->chunk_generation == shadow_chunk_generation &&
+            (int)sh->chunk_slot == (int)shadow_chunk_slot && sh->cc_index == cc_idx) {
+            sh->active = 0;
+        }
+    }
+    pthread_mutex_unlock(&g_shadow_pool_mutex[qp_idx]);
+
+    // Phase 2：仅在 prev>0 时更新 RTT(max) 与观测字段（与 fetch_sub 语义一致）
+    ncclIbChunkObservationOnValidCqe(cc, effective_chunk_slot, wr_rtt, now);
+    if (prev == 1) {
+        __sync_fetch_and_add(&cc->chunk_tracker.chunk_completed_wrs[effective_chunk_slot],
+                            cc->chunk_tracker.chunk_wr_counts[effective_chunk_slot]);
+        ncclIbFinalizeChunkRTT(cc, effective_chunk_slot);
+    }
+out_unlock_pool:
+    pthread_mutex_unlock(&g_cc_pool_mutex);
+    return ret;
 }
 
 // ============================================================================
@@ -667,7 +1133,6 @@ ncclResult_t ncclIbOnCompletionWithCC(struct ncclIbNetCommBase* commBase,
 // ============================================================================
 
 ncclResult_t ncclIbAIMDFinalize(void) {
-    // 清理CC Pool
     if (g_cc_pool_initialized) {
         pthread_mutex_lock(&g_cc_pool_mutex);
         for (int i = 0; i < NCCL_CC_MAX_COLLECTIVES; i++) {
@@ -680,7 +1145,14 @@ ncclResult_t ncclIbAIMDFinalize(void) {
                 if (cc->chunk_tracker.chunk_completed_wrs) free((void*)cc->chunk_tracker.chunk_completed_wrs);
                 if (cc->chunk_tracker.chunk_status) free((void*)cc->chunk_tracker.chunk_status);
                 if (cc->chunk_tracker.chunk_cqes_pending) free((void*)cc->chunk_tracker.chunk_cqes_pending);
+                if (cc->chunk_tracker.chunk_finalized_flag) free((void*)cc->chunk_tracker.chunk_finalized_flag);
+                if (cc->chunk_tracker.chunk_generation) free(cc->chunk_tracker.chunk_generation);
                 if (cc->chunk_tracker.chunk_original_wr_id) free(cc->chunk_tracker.chunk_original_wr_id);
+                if (cc->chunk_tracker.chunk_first_cqe_us) free(cc->chunk_tracker.chunk_first_cqe_us);
+                if (cc->chunk_tracker.chunk_last_cqe_us) free(cc->chunk_tracker.chunk_last_cqe_us);
+                if (cc->chunk_tracker.chunk_lat_sum_us) free(cc->chunk_tracker.chunk_lat_sum_us);
+                if (cc->chunk_tracker.chunk_lat_min_us) free(cc->chunk_tracker.chunk_lat_min_us);
+                if (cc->chunk_tracker.chunk_lat_samples) free(cc->chunk_tracker.chunk_lat_samples);
                 pthread_mutex_destroy(&cc->chunk_tracker.mutex);
                 pthread_mutex_destroy(&cc->mutex);
                 free(cc);
@@ -689,6 +1161,7 @@ ncclResult_t ncclIbAIMDFinalize(void) {
         }
         pthread_mutex_unlock(&g_cc_pool_mutex);
     }
-    
+
+    xcclTelemetryHintTransportFini();
     return ncclSuccess;
 }

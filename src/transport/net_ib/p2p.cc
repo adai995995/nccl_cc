@@ -115,6 +115,8 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
   // 🔴 AIMD拥塞控制：在QP循环之前检查窗口并编码 wr_id（仅对产生 CQE 的 lastWr 分配 Shadow）
   struct CollectiveCC* cc = NULL;
   int chunk_id_slot = 0;  // 供 for 循环内 post 失败时 chunk_cqes_pending 使用
+  uint64_t chunk_generation = 0;
+  uint32_t chunk_generation_tag = 0;
   int cc_index = -1;      // 供 QP 循环内 AllocateShadowSlot/ENCODE 使用，在 cc&&enabled 时由 g_cc_pool 查找赋值
   int has_last_wr = (lastWr != (comm->wrs + nreqs - 1));  // 1 when separate lastWr
   int total_wrs = nreqs + has_last_wr;
@@ -127,10 +129,11 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
     NCCLCHECK(ncclIbGetOrCreateCollectiveCC(comm, collective_id, 0, &cc));
     
     if (cc && cc->enabled) {
+      ncclCcOnCollectiveBegin(cc, ncclIbGetNanos());
       int old_inflight, new_inflight = 0;  /* new_inflight 在未 continue/return 时必会赋值为 old_inflight+1，此处仅消除 -Wmaybe-uninitialized */
       do {
         old_inflight = __sync_fetch_and_add(&cc->inflight_chunks, 0);
-        if (old_inflight >= cc->lib_window) {
+        if (old_inflight >= ncclCcGetEffectiveWindowForSend(cc)) {
           // 窗口满时主动 poll 本 comm 各 dev 的 CQ，消化 CQE→OnCompletionWithCC→FinalizeChunkRTT→inflight--，避免上层未 test 导致 inflight 永远不降
           struct ibv_wc wcs[8];
           int wrDone = 0;
@@ -180,14 +183,14 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
 
           // 重读 inflight：若排空或额外 poll 消化了 CQE 则 continue 重试 CAS，否则 return ncclInProgress
           old_inflight = __sync_fetch_and_add(&cc->inflight_chunks, 0);
-          if (old_inflight < cc->lib_window) continue;
+          if (old_inflight < ncclCcGetEffectiveWindowForSend(cc)) continue;
 
           sched_yield();  // 返回前让出 CPU，避免与其他线程/进程抢
           static uint64_t last_print = 0;
           uint64_t now_us = ncclIbGetMicros();
           if (now_us - last_print > 1000000) {
             printf("[AIMD] MultiSend blocked: inflight=%d window=%d cqe_in_round=%d ndevs=%d nqps=%d comm=%p cc=%p\n",
-                   old_inflight, cc->lib_window, totalCqeInRound, comm->base.vProps.ndevs, nqps, (void*)comm, (void*)cc);
+                   old_inflight, ncclCcGetEffectiveWindowForSend(cc), totalCqeInRound, comm->base.vProps.ndevs, nqps, (void*)comm, (void*)cc);
 #ifdef AIMD_DEBUG
             if (comm->base.vProps.ndevs > 0) {
               struct ncclIbNetCommDevBase* _db = ncclIbGetNetCommDevBase(&comm->base, 0);
@@ -201,10 +204,12 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
         }
         new_inflight = old_inflight + 1;
       } while (!__sync_bool_compare_and_swap(&cc->inflight_chunks, old_inflight, new_inflight));
-      // 🔴 按 cc 单调分配 chunk_id_slot，避免多 comm 同 collective_id 时共 slot→chunk_cqes_pending 只减 1 次、inflight 不降
-      int next = __sync_fetch_and_add(&cc->chunk_tracker.next_chunk_id, 1);
-      chunk_id_slot = (int)((unsigned)next % (unsigned)cc->chunk_tracker.max_chunks);
-      ncclIbRecordChunkSend(cc, chunk_id_slot, total_wrs, nqps > 0 ? nqps : 1);
+      // 按 cc 单调分配 chunk_slot，并生成 chunk_generation（用于 stale CQE 防护）。
+      uint64_t seq = __sync_fetch_and_add(&cc->chunk_tracker.next_chunk_seq, 1);
+      chunk_id_slot = (int)((unsigned)seq % (unsigned)cc->chunk_tracker.max_chunks);
+      chunk_generation = seq / (uint64_t)cc->chunk_tracker.max_chunks;
+      chunk_generation_tag = (uint32_t)(chunk_generation & NCCL_CC_CHUNK_GENERATION_TAG_MASK);
+      ncclIbRecordChunkSend(cc, chunk_id_slot, chunk_generation, total_wrs);
       
       cc_index = -1;
       pthread_mutex_lock(&g_cc_pool_mutex);
@@ -218,11 +223,16 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
       
       if (cc_index < 0) {
         __sync_fetch_and_sub(&cc->inflight_chunks, 1);
+        cc->chunk_tracker.chunk_status[chunk_id_slot] = 0;
+        cc->chunk_tracker.chunk_finalized_flag[chunk_id_slot] = 0;
+        cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot] = 0;
         return ncclInternalError;
       }
     }
   }
 
+  // 记录该 chunk 中“已成功 post 的 signaled QP 数”，作为 chunk_cqes_pending 的增量来源。
+  int posted_qps = 0;
   for (int i = 0; i < nqps; i++) {
     NCCLCHECK(ncclIbCommBaseGetQpForRequest(&comm->base, comm->base.fifoHead, i, &qp, &qpIndex));
     int devIndex = qp->devIndex;
@@ -263,13 +273,18 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
 
     // AIMD Per-QP: 每 QP 独立 AllocateShadowSlot 与 Encode，避免 lastWr 复用导致 Double-Free / WR_ID 与解码不匹配
     if (cc && cc->enabled && cc_index >= 0) {
-      shadow_slot = ncclIbAllocateShadowSlot(qp_pool_idx, original_lastWr_wr_id, cc_index, chunk_id_slot);
+      shadow_slot = ncclIbAllocateShadowSlot(qp_pool_idx, original_lastWr_wr_id, cc_index, chunk_id_slot, chunk_generation);
       if (shadow_slot < 0) {
-        __sync_fetch_and_sub(&cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot], nqps - i);
-        if (i == 0) __sync_fetch_and_sub(&cc->inflight_chunks, 1);  // 未 post 任何 QP，无 CQE，须回滚 inflight
+        if (posted_qps == 0) {
+          // 没有任何 QP 成功 post：该 chunk 不会产生 CQE，必须回滚 inflight。
+          __sync_fetch_and_sub(&cc->inflight_chunks, 1);
+          cc->chunk_tracker.chunk_status[chunk_id_slot] = 0;
+          cc->chunk_tracker.chunk_finalized_flag[chunk_id_slot] = 0;
+          cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot] = 0;
+        }
         return ncclSystemError;
       }
-      lastWr->wr_id = NCCL_CC_ENCODE_WR_ID(qp_pool_idx, cc_index, chunk_id_slot, shadow_slot);
+      lastWr->wr_id = NCCL_CC_ENCODE_WR_ID(qp_pool_idx, cc_index, chunk_id_slot, chunk_generation_tag, shadow_slot);
     }
 
     struct ibv_send_wr* bad_wr;
@@ -325,10 +340,20 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
     if (post_ret != 0) {
       if (cc && cc->enabled && shadow_slot >= 0) {
         ncclIbReleaseShadowSlot(qp_pool_idx, shadow_slot);
-        __sync_fetch_and_sub(&cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot], nqps - i);
-        if (i == 0) __sync_fetch_and_sub(&cc->inflight_chunks, 1);  // 未 post 任何 QP，无 CQE，须回滚 inflight
+        if (posted_qps == 0) {
+          // 没有任何 QP 成功 post：该 chunk 不会产生 CQE，必须回滚 inflight。
+          __sync_fetch_and_sub(&cc->inflight_chunks, 1);
+          cc->chunk_tracker.chunk_status[chunk_id_slot] = 0;
+          cc->chunk_tracker.chunk_finalized_flag[chunk_id_slot] = 0;
+          cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot] = 0;
+        }
       }
       return ncclSystemError;
+    }
+    // post 成功：该 QP 对应的 signaled CQE 一定会回来，因此 pending++。
+    if (cc && cc->enabled) {
+      __sync_fetch_and_add(&cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot], 1);
+      posted_qps++;
     }
 
     for (int r=0; r<nreqs; r++) {
