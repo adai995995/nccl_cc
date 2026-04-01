@@ -52,6 +52,12 @@ void ncclIbAddEvent(struct ncclIbRequest* req, int devIndex) {
   req->devBases[devIndex] = base;
 }
 
+static inline int ncclIbSelectQpRoundRobin(uint64_t reqSeq, int localIdx, int totalQps) {
+  if (totalQps <= 0) return 0;
+  int start = (int)(reqSeq % (uint64_t)totalQps);
+  return (start + localIdx) % totalQps;
+}
+
 ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
   struct ncclIbRequest** reqs = comm->fifoReqs[slot];
   volatile struct ncclIbSendFifo* slots = comm->ctsFifo[slot];
@@ -109,10 +115,10 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
   // Multi-QP: make sure IB writes are multiples of 128B so that LL and LL128 protocols still work
   const int align = 128;
   int nqps = ncclIbCommBaseGetNqpsPerRequest(&comm->base);
+  int active_qps = nqps;
   int qpIndex = -1;
   ncclIbQp* qp = NULL;
   
-  // 🔴 AIMD拥塞控制：在QP循环之前检查窗口并编码 wr_id（仅对产生 CQE 的 lastWr 分配 Shadow）
   struct CollectiveCC* cc = NULL;
   int chunk_id_slot = 0;  // 供 for 循环内 post 失败时 chunk_cqes_pending 使用
   uint64_t chunk_generation = 0;
@@ -129,7 +135,6 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
     NCCLCHECK(ncclIbGetOrCreateCollectiveCC(comm, collective_id, 0, &cc));
     
     if (cc && cc->enabled) {
-      ncclCcOnCollectiveBegin(cc, ncclIbGetNanos());
       int old_inflight, new_inflight = 0;  /* new_inflight 在未 continue/return 时必会赋值为 old_inflight+1，此处仅消除 -Wmaybe-uninitialized */
       do {
         old_inflight = __sync_fetch_and_add(&cc->inflight_chunks, 0);
@@ -228,13 +233,20 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
         cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot] = 0;
         return ncclInternalError;
       }
+      active_qps = ncclCcGetEffectiveChannelsForSend(cc, nqps);
+      if (active_qps < 1) active_qps = 1;
     }
+  }
+
+  if (cc && cc->enabled) {
+    ncclCcApplyPacingForSend(cc);
   }
 
   // 记录该 chunk 中“已成功 post 的 signaled QP 数”，作为 chunk_cqes_pending 的增量来源。
   int posted_qps = 0;
-  for (int i = 0; i < nqps; i++) {
-    NCCLCHECK(ncclIbCommBaseGetQpForRequest(&comm->base, comm->base.fifoHead, i, &qp, &qpIndex));
+  for (int i = 0; i < active_qps; i++) {
+    int qpSel = ncclIbSelectQpRoundRobin(comm->base.fifoHead, i, nqps);
+    NCCLCHECK(ncclIbCommBaseGetQpForRequest(&comm->base, comm->base.fifoHead, qpSel, &qp, &qpIndex));
     int devIndex = qp->devIndex;
     int qp_pool_idx = qp->qp->qp_num % NCCL_CC_MAX_QP;
     int shadow_slot = -1;
@@ -246,7 +258,7 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
       // Select proper rkey (needed even for 0-size send)
       comm->wrs[r].wr.rdma.rkey = slots[r].rkeys[qp->remDevIdx];
 
-      int chunkSize = DIVUP(DIVUP(reqs[r]->send.size, nqps), align) * align;
+      int chunkSize = DIVUP(DIVUP(reqs[r]->send.size, active_qps), align) * align;
       int length = std::min(reqs[r]->send.size-reqs[r]->send.offset, chunkSize);
       if (length <= 0) {
         comm->wrs[r].sg_list = NULL;
@@ -357,7 +369,7 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
     }
 
     for (int r=0; r<nreqs; r++) {
-      int chunkSize = DIVUP(DIVUP(reqs[r]->send.size, nqps), align) * align;
+      int chunkSize = DIVUP(DIVUP(reqs[r]->send.size, active_qps), align) * align;
       reqs[r]->send.offset += chunkSize;
       comm->sges[r].addr += chunkSize;
       comm->wrs[r].wr.rdma.remote_addr += chunkSize;
@@ -420,10 +432,20 @@ ncclResult_t ncclIbIsend(void* sendComm, void* data, size_t size, int tag, void*
 
     // Populate events
     int nqps = ncclIbCommBaseGetNqpsPerRequest(&comm->base);
+    int qp_start = (nqps > 0) ? (int)(comm->base.fifoHead % (uint64_t)nqps) : 0;
+    int active_qps = nqps;
+    if (ncclIbIsAIMDEnabled()) {
+      struct CollectiveCC* cc = NULL;
+      if (ncclIbGetOrCreateCollectiveCC(comm, comm->base.fifoHead, 0, &cc) == ncclSuccess && cc && cc->enabled) {
+        active_qps = ncclCcGetEffectiveChannelsForSend(cc, nqps);
+        if (active_qps < 1) active_qps = 1;
+      }
+    }
     int qpIndex = -1;
     ncclIbQp* qp = NULL;
-    for (int i = 0; i < nqps; i++) {
-      NCCLCHECK(ncclIbCommBaseGetQpForRequest(&comm->base, comm->base.fifoHead, i, &qp, &qpIndex));
+    for (int i = 0; i < active_qps; i++) {
+      int qpSel = (qp_start + i) % nqps;
+      NCCLCHECK(ncclIbCommBaseGetQpForRequest(&comm->base, comm->base.fifoHead, qpSel, &qp, &qpIndex));
       ncclIbAddEvent(req, qp->devIndex);
     }
 

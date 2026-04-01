@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "xccl_telemetry_hint.h"
+#include "xccl_control_snapshot.h"
 #include <stdint.h>
 
 // ============================================================================
@@ -186,9 +187,19 @@ struct CollectiveCC {
     uint32_t epoch_due;              /* 原子：finalize 置 1，IfDue exchange 清 0 */
     int device_cap;                  /* Phase 4 恒为 max_window；Phase 5 可动态 */
     volatile int effective_window;   /* min(lib_window, device_cap, hint_cap) 再 clamp max_chunks；0=未发布则回退 lib_window */
+    volatile int effective_channels; /* 0=未发布(回退全 QP), >0 表示发送路径可用 QP/channel 上限 */
+    volatile uint32_t effective_pacing_ns; /* 0=不 pacing；>0 表示 chunk 注入最小间隔 */
+    volatile uint64_t last_inject_ns;      /* 上次成功注入时间（单调时钟） */
     uint64_t epoch_last_ts_ns;       /* 上次成功 ccEpochUpdate 单调时间 */
     uint64_t epoch_interval_ns;      /* 默认 1ms，可与 AIMD update_interval 分离 */
     uint64_t finalized_chunks_total; /* finalize 次数（观测，原子递增） */
+
+    // 外部控制快照状态（完全解耦模式）
+    volatile int external_control_active;/* 最近一次控制面循环是否收到有效外部快照 */
+    uint64_t external_snapshot_ts_ns;    /* 最近应用快照时间戳 */
+    uint16_t external_target_window;     /* 最近应用的 target_window（观测） */
+    uint16_t external_target_channels;   /* 预留给后续 channel 并发控制 */
+    uint32_t external_pacing_ns;         /* 预留给后续 pacing */
 };
 
 // Phase 2：finalize 一次性样本（微秒）
@@ -218,6 +229,9 @@ int ncclIbCcEpochEnabled(void);
 uint64_t ncclIbGetNanos(void);
 /* Phase 4：send/MultiSend 与 PostSendWithCC 准入上界（epoch 关闭时等价 lib_window） */
 int ncclCcGetEffectiveWindowForSend(const struct CollectiveCC* cc);
+int ncclCcGetEffectiveChannelsForSend(const struct CollectiveCC* cc, int total_qps);
+uint32_t ncclCcGetEffectivePacingNsForSend(const struct CollectiveCC* cc);
+void ncclCcApplyPacingForSend(struct CollectiveCC* cc);
 
 /* Phase 3：发送路径低频调用；幂等、内部节流 */
 void ncclCcOnCollectiveBegin(struct CollectiveCC* cc, uint64_t now_ns);

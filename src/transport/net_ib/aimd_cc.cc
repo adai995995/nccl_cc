@@ -32,6 +32,35 @@ int g_cc_pool_initialized = 0;
 int g_aimd_enabled = -1;  // -1: 未检查, 0: 禁用, 1: 启用
 int g_cc_metrics_enabled = -1;  // Phase 2 观测 NCCL_CC_METRICS
 static int g_cc_epoch_enabled = -1;  // Phase 4 NCCL_CC_EPOCH_ENABLE
+static pthread_t g_cc_control_thread;
+static int g_cc_control_thread_started = 0;
+static volatile int g_cc_control_thread_running = 0;
+static uint64_t g_cc_control_plane_interval_us = 1000ULL; // 默认 1ms
+static uint64_t g_cc_external_snapshot_ttl_ns = 20000000ULL; // 默认 20ms
+
+static inline int ncclCcLoadInt(const volatile int* p) {
+    return __atomic_load_n(p, __ATOMIC_RELAXED);
+}
+
+static inline void ncclCcStoreInt(volatile int* p, int v) {
+    __atomic_store_n(p, v, __ATOMIC_RELAXED);
+}
+
+static inline uint32_t ncclCcLoadU32(const volatile uint32_t* p) {
+    return __atomic_load_n(p, __ATOMIC_RELAXED);
+}
+
+static inline void ncclCcStoreU32(volatile uint32_t* p, uint32_t v) {
+    __atomic_store_n(p, v, __ATOMIC_RELAXED);
+}
+
+static inline uint64_t ncclCcLoadU64(const volatile uint64_t* p) {
+    return __atomic_load_n(p, __ATOMIC_RELAXED);
+}
+
+static inline void ncclCcStoreU64(volatile uint64_t* p, uint64_t v) {
+    __atomic_store_n(p, v, __ATOMIC_RELAXED);
+}
 
 // ============================================================================
 // 工具函数
@@ -73,17 +102,88 @@ int ncclIbCcEpochEnabled(void) {
 
 int ncclCcGetEffectiveWindowForSend(const struct CollectiveCC* cc) {
     if (!cc) return 0;
-    if (ncclIbCcEpochEnabled()) {
-        int ew = cc->effective_window;
-        if (ew > 0) return ew;
-    }
-    return cc->lib_window;
+    int ew = ncclCcLoadInt(&cc->effective_window);
+    int ext = ncclCcLoadInt(&cc->external_control_active);
+    if (ew > 0 && (ext || ncclIbCcEpochEnabled())) return ew;
+    return ncclCcLoadInt(&cc->lib_window);
+}
+
+int ncclCcGetEffectiveChannelsForSend(const struct CollectiveCC* cc, int total_qps) {
+    if (!cc || total_qps <= 0) return total_qps;
+    int ec = ncclCcLoadInt(&cc->effective_channels);
+    if (ec <= 0) return total_qps; // 0=未发布，回退全 QP
+    if (ec > total_qps) ec = total_qps;
+    if (ec < 1) ec = 1;
+    return ec;
+}
+
+uint32_t ncclCcGetEffectivePacingNsForSend(const struct CollectiveCC* cc) {
+    if (!cc) return 0;
+    return ncclCcLoadU32(&cc->effective_pacing_ns);
 }
 
 uint64_t ncclIbGetNanos(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static void ncclCcControlPlaneSleepUs(uint64_t us) {
+    struct timespec ts;
+    ts.tv_sec = (time_t)(us / 1000000ULL);
+    ts.tv_nsec = (long)((us % 1000000ULL) * 1000ULL);
+    nanosleep(&ts, NULL);
+}
+
+void ncclCcApplyPacingForSend(struct CollectiveCC* cc) {
+    if (!cc) return;
+    uint32_t pace_ns = ncclCcGetEffectivePacingNsForSend(cc);
+    if (pace_ns == 0) return;
+
+    for (;;) {
+        uint64_t now = ncclIbGetNanos();
+        uint64_t last = ncclCcLoadU64(&cc->last_inject_ns);
+
+        if (last == 0) {
+            if (__atomic_compare_exchange_n(&cc->last_inject_ns, &last, now, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+                return;
+            continue;
+        }
+
+        uint64_t target = last + (uint64_t)pace_ns;
+        if (now >= target) {
+            if (__atomic_compare_exchange_n(&cc->last_inject_ns, &last, now, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+                return;
+            continue;
+        }
+
+        uint64_t wait_ns = target - now;
+        if (wait_ns > 100000ULL) wait_ns = 100000ULL; // 最长 100us，避免长阻塞
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = (long)wait_ns;
+        nanosleep(&ts, NULL);
+    }
+}
+
+static void ncclCcControlPlaneIntervalInitOnce(void) {
+    static int done;
+    if (done) return;
+    done = 1;
+    const char* e = getenv("NCCL_CC_CONTROL_PLANE_INTERVAL_US");
+    if (!e || !e[0]) return;
+    uint64_t v = (uint64_t)strtoull(e, NULL, 10);
+    if (v >= 100ULL && v <= 1000000ULL) g_cc_control_plane_interval_us = v;
+}
+
+static void ncclCcExternalSnapshotTtlInitOnce(void) {
+    static int done;
+    if (done) return;
+    done = 1;
+    const char* e = getenv(NCCL_CC_CONTROL_SNAPSHOT_TTL_NS_ENV);
+    if (!e || !e[0]) return;
+    uint64_t v = (uint64_t)strtoull(e, NULL, 10);
+    if (v >= 1000000ULL && v <= 10000000000ULL) g_cc_external_snapshot_ttl_ns = v;
 }
 
 static uint64_t g_hint_refresh_min_ns = 10000000ULL; /* 10ms 默认 */
@@ -161,6 +261,89 @@ int ncclCcHintIsValid(const struct CollectiveCC* cc, uint64_t now_ns) {
     int v = c->hint_valid;
     pthread_mutex_unlock(&c->mutex);
     return v;
+}
+
+static void ncclIbUpdateLIWLocal(struct CollectiveCC* cc);
+
+static int ncclIbExternalControlActive(void) {
+    return xcclControlSnapshotEnabled() && xcclControlSnapshotTransportIsMapped();
+}
+
+static void ncclCcApplyExternalSnapshot(struct CollectiveCC* cc, const XcclControlSnapshot* snap, int snap_ok, uint64_t now_ns) {
+    if (!cc) return;
+    pthread_mutex_lock(&cc->mutex);
+
+    int applied = 0;
+    if (snap_ok && snap) {
+        uint64_t snap_comm = snap->comm_key;
+        uint64_t cc_comm = (uint64_t)cc->comm_key;
+        uint64_t age_ns = (now_ns >= snap->ts_ns) ? (now_ns - snap->ts_ns) : 0;
+        if ((snap_comm == 0ULL || snap_comm == cc_comm) &&
+            age_ns <= g_cc_external_snapshot_ttl_ns && snap->target_window > 0) {
+            int tw = (int)snap->target_window;
+            if (tw < cc->min_window) tw = cc->min_window;
+            if (tw > cc->max_window) tw = cc->max_window;
+            if (tw > cc->device_cap) tw = cc->device_cap;
+            if (tw > cc->chunk_tracker.max_chunks) tw = cc->chunk_tracker.max_chunks;
+
+            ncclCcStoreInt(&cc->lib_window, tw);
+            ncclCcStoreInt(&cc->effective_window, tw);
+            ncclCcStoreInt(&cc->effective_channels, (int)snap->target_channels);
+            ncclCcStoreU32(&cc->effective_pacing_ns, snap->pacing_ns);
+            ncclCcStoreInt(&cc->external_control_active, 1);
+            cc->external_snapshot_ts_ns = snap->ts_ns;
+            cc->external_target_window = snap->target_window;
+            cc->external_target_channels = snap->target_channels;
+            cc->external_pacing_ns = snap->pacing_ns;
+            applied = 1;
+        }
+    }
+
+    if (!applied) {
+        ncclCcStoreInt(&cc->external_control_active, 0);
+        ncclCcStoreInt(&cc->effective_window, ncclCcLoadInt(&cc->lib_window));
+        ncclCcStoreInt(&cc->effective_channels, 0);
+        ncclCcStoreU32(&cc->effective_pacing_ns, 0);
+    }
+    pthread_mutex_unlock(&cc->mutex);
+}
+
+static void* ncclCcControlPlaneThreadMain(void* arg) {
+    (void)arg;
+    while (g_cc_control_thread_running) {
+        struct CollectiveCC* local_ccs[NCCL_CC_MAX_COLLECTIVES];
+        int ncc = 0;
+
+        pthread_mutex_lock(&g_cc_pool_mutex);
+        for (int i = 0; i < NCCL_CC_MAX_COLLECTIVES; i++) {
+            if (g_cc_pool[i] && g_cc_pool[i]->enabled) {
+                local_ccs[ncc++] = g_cc_pool[i];
+            }
+        }
+        pthread_mutex_unlock(&g_cc_pool_mutex);
+
+        int external_active = ncclIbExternalControlActive();
+        XcclControlSnapshot snap;
+        int snap_ok = 0;
+        uint64_t now_ns = ncclIbGetNanos();
+        if (external_active && xcclControlSnapshotRead(&snap) == ncclSuccess) snap_ok = 1;
+
+        for (int i = 0; i < ncc; i++) {
+            if (external_active) {
+                ncclCcApplyExternalSnapshot(local_ccs[i], &snap, snap_ok, now_ns);
+                if (!ncclCcLoadInt(&local_ccs[i]->external_control_active)) {
+                    // 外部快照不可用/过期/comm 不匹配：回退本地 AIMD，避免窗口静态停留
+                    ncclIbUpdateLIWLocal(local_ccs[i]);
+                }
+            } else {
+                ncclCcStoreInt(&local_ccs[i]->external_control_active, 0);
+                ncclIbUpdateLIWLocal(local_ccs[i]);
+            }
+        }
+
+        ncclCcControlPlaneSleepUs(g_cc_control_plane_interval_us);
+    }
+    return NULL;
 }
 
 // Phase 2：仅在合法 CQE（pending-- 后 prev>0）路径更新；与 chunk_rtts（max）同源更新顺序
@@ -365,7 +548,7 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
 
     cc->min_window = min_w;
     cc->max_window = max_w;
-    cc->lib_window = lib_w;
+    ncclCcStoreInt(&cc->lib_window, lib_w);
     cc->inflight_chunks = 0;
     cc->alpha = alpha_val;
     cc->beta = beta_val;
@@ -374,6 +557,14 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
 
     cc->device_cap = max_w;
     cc->epoch_interval_ns = 1000000ULL;
+    ncclCcStoreInt(&cc->effective_channels, 0);
+    ncclCcStoreU32(&cc->effective_pacing_ns, 0);
+    ncclCcStoreU64(&cc->last_inject_ns, 0ULL);
+    ncclCcStoreInt(&cc->external_control_active, 0);
+    cc->external_snapshot_ts_ns = 0;
+    cc->external_target_window = 0;
+    cc->external_target_channels = 0;
+    cc->external_pacing_ns = 0;
     {
         const char* ein = getenv(NCCL_CC_EPOCH_INTERVAL_NS_ENV);
         if (ein && ein[0]) {
@@ -401,7 +592,7 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
     }
     cc->chunk_tracker.max_chunks = max_chunks;
     // I0/R1：在途 chunk 不应超过可区分 slot 数（见设计 §5.1）
-    if (cc->lib_window > max_chunks) cc->lib_window = max_chunks;
+    if (ncclCcLoadInt(&cc->lib_window) > max_chunks) ncclCcStoreInt(&cc->lib_window, max_chunks);
     cc->chunk_tracker.chunk_send_times = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
     cc->chunk_tracker.chunk_rtts = (uint64_t*)malloc(max_chunks * sizeof(uint64_t));
     cc->chunk_tracker.chunk_wr_counts = (int*)malloc(max_chunks * sizeof(int));
@@ -657,9 +848,8 @@ void ncclIbUpdateCollectiveRTT(struct CollectiveCC* cc, uint64_t chunk_rtt) {
         pthread_mutex_unlock(&cc->mutex);
     }
     
-    // EWMA更新（在窗口更新时进行，低频操作）
-    // 触发窗口更新（如果到时间）
-    ncclIbUpdateLIW(cc);
+    // 控制面解耦：RTT 更新仅负责观测累积，不在 completion 热路径触发控制计算。
+    // LIW/epoch/hint 统一由控制面线程定期执行。
 }
 
 // ============================================================================
@@ -687,7 +877,7 @@ static void ncclCcEpochUpdate(struct CollectiveCC* cc, uint64_t now_ns) {
         cc->rtt_ewma = alpha * (double)current_max + (1.0 - alpha) * cc->rtt_ewma;
     }
 
-    double old_window = (double)cc->lib_window;
+    double old_window = (double)ncclCcLoadInt(&cc->lib_window);
     double rtt_collective = cc->rtt_ewma;
 
     int hint_forbid_increase = 0;
@@ -708,7 +898,7 @@ static void ncclCcEpochUpdate(struct CollectiveCC* cc, uint64_t now_ns) {
     if (cc->rtt_target_high > 0 && rtt_collective > (double)cc->rtt_target_high) {
         double new_window = old_window * cc->beta;
         if (new_window < cc->min_window) new_window = cc->min_window;
-        cc->lib_window = (int)new_window;
+        ncclCcStoreInt(&cc->lib_window, (int)new_window);
         cc->congestion_events++;
         if (cc->congestion_events % 100 == 0) {
             INFO(NCCL_NET, "AIMD[%lu]: Congestion (RTT=%.1f > %.1f), LIW %.1f -> %.1f",
@@ -718,11 +908,11 @@ static void ncclCcEpochUpdate(struct CollectiveCC* cc, uint64_t now_ns) {
     } else if (!hint_forbid_increase && cc->rtt_target_low > 0 && rtt_collective < (double)cc->rtt_target_low) {
         double new_window = old_window + cc->alpha;
         if (new_window > cc->max_window) new_window = cc->max_window;
-        cc->lib_window = (int)new_window;
+        ncclCcStoreInt(&cc->lib_window, (int)new_window);
         cc->increase_events++;
     }
 
-    int eff = cc->lib_window;
+    int eff = ncclCcLoadInt(&cc->lib_window);
     if (cc->device_cap < eff) eff = cc->device_cap;
     if (hint_cap < eff) eff = hint_cap;
     int mc = cc->chunk_tracker.max_chunks;
@@ -734,7 +924,7 @@ static void ncclCcEpochUpdate(struct CollectiveCC* cc, uint64_t now_ns) {
         }
         eff = mc;
     }
-    cc->effective_window = eff;
+    ncclCcStoreInt(&cc->effective_window, eff);
 
     cc->last_update_time = now;
     cc->total_updates++;
@@ -779,7 +969,7 @@ static void ncclCcEpochUpdateIfDue(struct CollectiveCC* cc, uint64_t now_ns) {
 // AIMD 控制
 // ============================================================================
 
-void ncclIbUpdateLIW(struct CollectiveCC* cc) {
+static void ncclIbUpdateLIWLocal(struct CollectiveCC* cc) {
     if (!cc || !cc->enabled) return;
 
     if (ncclIbCcHintEnabled()) {
@@ -810,7 +1000,7 @@ void ncclIbUpdateLIW(struct CollectiveCC* cc) {
         cc->rtt_ewma = alpha * (double)current_max + (1.0 - alpha) * cc->rtt_ewma;
     }
 
-    double old_window = (double)cc->lib_window;
+    double old_window = (double)ncclCcLoadInt(&cc->lib_window);
     double rtt_collective = cc->rtt_ewma;
 
     if (cc->rtt_target_high > 0 && rtt_collective > (double)cc->rtt_target_high) {
@@ -818,7 +1008,7 @@ void ncclIbUpdateLIW(struct CollectiveCC* cc) {
         if (new_window < cc->min_window) {
             new_window = cc->min_window;
         }
-        cc->lib_window = (int)new_window;
+        ncclCcStoreInt(&cc->lib_window, (int)new_window);
         cc->congestion_events++;
 
         if (cc->congestion_events % 100 == 0) {
@@ -832,7 +1022,7 @@ void ncclIbUpdateLIW(struct CollectiveCC* cc) {
         if (new_window > cc->max_window) {
             new_window = cc->max_window;
         }
-        cc->lib_window = (int)new_window;
+        ncclCcStoreInt(&cc->lib_window, (int)new_window);
         cc->increase_events++;
     }
 
@@ -860,6 +1050,12 @@ void ncclIbUpdateLIW(struct CollectiveCC* cc) {
     pthread_mutex_unlock(&cc->mutex);
 }
 
+void ncclIbUpdateLIW(struct CollectiveCC* cc) {
+    if (!cc || !cc->enabled) return;
+    if (ncclCcLoadInt(&cc->external_control_active)) return; // 外部快照生效时，禁用本地控制律
+    ncclIbUpdateLIWLocal(cc);
+}
+
 // ============================================================================
 // 初始化/清理
 // ============================================================================
@@ -871,6 +1067,8 @@ ncclResult_t ncclIbAIMDInit(void) {
     printf("[AIMD] AIMD build (release, no -DAIMD_DEBUG)\n"); fflush(stdout);
 #endif
     NCCLCHECK(xcclTelemetryHintTransportInit());
+    NCCLCHECK(xcclControlSnapshotTransportInit());
+    ncclCcExternalSnapshotTtlInitOnce();
 
     if (!ncclIbIsAIMDEnabled()) {
         return ncclSuccess;
@@ -878,6 +1076,14 @@ ncclResult_t ncclIbAIMDInit(void) {
 
     NCCLCHECK(ncclIbInitShadowPool());
     NCCLCHECK(ncclIbInitCCPool());
+    ncclCcControlPlaneIntervalInitOnce();
+    g_cc_control_thread_running = 1;
+    if (pthread_create(&g_cc_control_thread, NULL, ncclCcControlPlaneThreadMain, NULL) != 0) {
+        g_cc_control_thread_running = 0;
+        WARN("NET/IB: failed to start CC control-plane thread");
+        return ncclSystemError;
+    }
+    g_cc_control_thread_started = 1;
 
     return ncclSuccess;
 }
@@ -896,7 +1102,6 @@ ncclResult_t ncclIbPostSendWithCC(struct ncclIbSendComm* comm,
     if (!cc || !cc->enabled) {
         return ncclSuccess;  // 未启用CC，直接返回
     }
-    ncclCcOnCollectiveBegin(cc, ncclIbGetNanos());
 
     // 🔴 关键：使用原子操作检查并预留窗口空间（避免竞争）
     int old_inflight, new_inflight;
@@ -1133,6 +1338,12 @@ out_unlock_pool:
 // ============================================================================
 
 ncclResult_t ncclIbAIMDFinalize(void) {
+    if (g_cc_control_thread_started) {
+        g_cc_control_thread_running = 0;
+        pthread_join(g_cc_control_thread, NULL);
+        g_cc_control_thread_started = 0;
+    }
+
     if (g_cc_pool_initialized) {
         pthread_mutex_lock(&g_cc_pool_mutex);
         for (int i = 0; i < NCCL_CC_MAX_COLLECTIVES; i++) {
@@ -1163,5 +1374,6 @@ ncclResult_t ncclIbAIMDFinalize(void) {
     }
 
     xcclTelemetryHintTransportFini();
+    xcclControlSnapshotTransportFini();
     return ncclSuccess;
 }
