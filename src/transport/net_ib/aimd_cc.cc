@@ -6,6 +6,7 @@
 
 #include "aimd_cc.h"
 #include "common.h"
+#include "xccl_host_signal_snapshot.h"
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
@@ -328,17 +329,70 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
         uint64_t now_ns = ncclIbGetNanos();
         if (external_active && xcclControlSnapshotRead(&snap) == ncclSuccess) snap_ok = 1;
 
+        uint64_t agg_posted = 0;
+        uint64_t agg_completed = 0;
+        uint32_t agg_backlog = 0;
+        uint32_t agg_rtt_baseline = 0;
+        uint32_t agg_rtt_ewma = 0;
+        float agg_stretch = 1.0f;
+
         for (int i = 0; i < ncc; i++) {
+            struct CollectiveCC* cc = local_ccs[i];
             if (external_active) {
-                ncclCcApplyExternalSnapshot(local_ccs[i], &snap, snap_ok, now_ns);
-                if (!ncclCcLoadInt(&local_ccs[i]->external_control_active)) {
+                ncclCcApplyExternalSnapshot(cc, &snap, snap_ok, now_ns);
+                if (!ncclCcLoadInt(&cc->external_control_active)) {
                     // 外部快照不可用/过期/comm 不匹配：回退本地 AIMD，避免窗口静态停留
-                    ncclIbUpdateLIWLocal(local_ccs[i]);
+                    ncclIbUpdateLIWLocal(cc);
                 }
             } else {
-                ncclCcStoreInt(&local_ccs[i]->external_control_active, 0);
-                ncclIbUpdateLIWLocal(local_ccs[i]);
+                ncclCcStoreInt(&cc->external_control_active, 0);
+                ncclIbUpdateLIWLocal(cc);
             }
+
+            uint64_t posted = ncclCcLoadU64(&cc->cq_posted_total);
+            uint64_t completed = ncclCcLoadU64(&cc->cq_completed_total);
+            agg_posted += posted;
+            agg_completed += completed;
+
+            uint64_t backlog64 = (posted > completed) ? (posted - completed) : 0ULL;
+            if (backlog64 > (uint64_t)agg_backlog) {
+                agg_backlog = (backlog64 > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)backlog64;
+            }
+
+            pthread_mutex_lock(&cc->mutex);
+            uint32_t base = (cc->rtt_baseline > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)cc->rtt_baseline;
+            uint32_t ewma = (cc->rtt_ewma < 0.0) ? 0U :
+                (cc->rtt_ewma > (double)0xFFFFFFFFU ? 0xFFFFFFFFU : (uint32_t)cc->rtt_ewma);
+            float stretch = 1.0f;
+            if (base > 0) {
+                stretch = (float)((double)ewma / (double)base);
+                if (stretch < 0.0f) stretch = 0.0f;
+            }
+            pthread_mutex_unlock(&cc->mutex);
+
+            if (stretch >= agg_stretch) {
+                agg_stretch = stretch;
+                agg_rtt_baseline = base;
+                agg_rtt_ewma = ewma;
+            }
+        }
+
+        if (xcclHostSignalSnapshotEnabled() && xcclHostSignalSnapshotIsMapped()) {
+            XcclHostSignalSnapshot hs;
+            memset(&hs, 0, sizeof(hs));
+            hs.magic = XCCL_HOST_SIGNAL_MAGIC;
+            hs.layout_version = XCCL_HOST_SIGNAL_LAYOUT_VERSION;
+            hs.struct_size = (uint16_t)sizeof(XcclHostSignalSnapshot);
+            hs.comm_key = 0ULL;
+            hs.ts_ns = now_ns;
+            hs.cq_posted = (agg_posted > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_posted;
+            hs.cq_completed = (agg_completed > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_completed;
+            hs.cq_backlog = agg_backlog;
+            hs.rtt_baseline_us = agg_rtt_baseline;
+            hs.rtt_ewma_us = agg_rtt_ewma;
+            hs.completion_stretch = agg_stretch;
+            hs.cpu_poll_delay_norm = 0.0f;
+            (void)xcclHostSignalSnapshotPublish(&hs);
         }
 
         ncclCcControlPlaneSleepUs(g_cc_control_plane_interval_us);
@@ -560,6 +614,8 @@ ncclResult_t ncclIbGetOrCreateCollectiveCC(void* comm, uint64_t collective_id, i
     ncclCcStoreInt(&cc->effective_channels, 0);
     ncclCcStoreU32(&cc->effective_pacing_ns, 0);
     ncclCcStoreU64(&cc->last_inject_ns, 0ULL);
+    ncclCcStoreU64(&cc->cq_posted_total, 0ULL);
+    ncclCcStoreU64(&cc->cq_completed_total, 0ULL);
     ncclCcStoreInt(&cc->external_control_active, 0);
     cc->external_snapshot_ts_ns = 0;
     cc->external_target_window = 0;
@@ -1068,6 +1124,7 @@ ncclResult_t ncclIbAIMDInit(void) {
 #endif
     NCCLCHECK(xcclTelemetryHintTransportInit());
     NCCLCHECK(xcclControlSnapshotTransportInit());
+    NCCLCHECK(xcclHostSignalSnapshotInit());
     ncclCcExternalSnapshotTtlInitOnce();
 
     if (!ncclIbIsAIMDEnabled()) {
@@ -1324,9 +1381,12 @@ ncclResult_t ncclIbOnCompletionWithCC(struct ncclIbNetCommBase* commBase,
     // Phase 2：仅在 prev>0 时更新 RTT(max) 与观测字段（与 fetch_sub 语义一致）
     ncclIbChunkObservationOnValidCqe(cc, effective_chunk_slot, wr_rtt, now);
     if (prev == 1) {
+        __sync_fetch_and_add(&cc->cq_completed_total, 1ULL);
         __sync_fetch_and_add(&cc->chunk_tracker.chunk_completed_wrs[effective_chunk_slot],
                             cc->chunk_tracker.chunk_wr_counts[effective_chunk_slot]);
         ncclIbFinalizeChunkRTT(cc, effective_chunk_slot);
+    } else {
+        __sync_fetch_and_add(&cc->cq_completed_total, 1ULL);
     }
 out_unlock_pool:
     pthread_mutex_unlock(&g_cc_pool_mutex);
@@ -1375,5 +1435,6 @@ ncclResult_t ncclIbAIMDFinalize(void) {
 
     xcclTelemetryHintTransportFini();
     xcclControlSnapshotTransportFini();
+    xcclHostSignalSnapshotFini();
     return ncclSuccess;
 }

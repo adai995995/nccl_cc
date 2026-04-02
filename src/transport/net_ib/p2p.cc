@@ -365,6 +365,7 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
     // post 成功：该 QP 对应的 signaled CQE 一定会回来，因此 pending++。
     if (cc && cc->enabled) {
       __sync_fetch_and_add(&cc->chunk_tracker.chunk_cqes_pending[chunk_id_slot], 1);
+      __sync_fetch_and_add(&cc->cq_posted_total, 1ULL);
       posted_qps++;
     }
 

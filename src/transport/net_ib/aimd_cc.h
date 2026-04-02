@@ -190,6 +190,8 @@ struct CollectiveCC {
     volatile int effective_channels; /* 0=未发布(回退全 QP), >0 表示发送路径可用 QP/channel 上限 */
     volatile uint32_t effective_pacing_ns; /* 0=不 pacing；>0 表示 chunk 注入最小间隔 */
     volatile uint64_t last_inject_ns;      /* 上次成功注入时间（单调时钟） */
+    volatile uint64_t cq_posted_total;     /* chunk signaled CQE posted 累计 */
+    volatile uint64_t cq_completed_total;  /* chunk signaled CQE completed 累计 */
     uint64_t epoch_last_ts_ns;       /* 上次成功 ccEpochUpdate 单调时间 */
     uint64_t epoch_interval_ns;      /* 默认 1ms，可与 AIMD update_interval 分离 */
     uint64_t finalized_chunks_total; /* finalize 次数（观测，原子递增） */

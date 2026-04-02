@@ -22,13 +22,16 @@ import sys
 import time
 
 from collectors import (
+    mlx5_drop_retry_total,
     mlx5_rdma_bytes_total,
     parse_ethtool_S,
     path_for_iface,
+    read_host_psi_mix_avg10,
     read_iface_speed_mbits,
     read_netdev_statistics,
-    read_psi_memory_some_avg10,
 )
+from control_snapshot import publish_control_frame
+from host_signal_snapshot import HostSignalReader
 from snapshot import (
     XCCL_HINT_F_CAUTION,
     XCCL_HINT_F_SEVERE,
@@ -58,9 +61,44 @@ def main() -> None:
     ap.add_argument("--interval-ms", type=int, default=int(os.environ.get("XCCL_TELEMETRY_INTERVAL_MS", "200")))
     ap.add_argument("--ecn-thresh", type=float, default=float(os.environ.get("XCCL_ECN_DELTA_THRESH", "1000.0")), help="周期内 rx_ecn_mark 增量超过此值开始打满 cnp（线性饱和）")
     ap.add_argument("--ce-thresh", type=float, default=float(os.environ.get("XCCL_CE_ERR_DELTA_THRESH", "100.0")), help="周期内错误计数总增量阈值")
+    ap.add_argument("--drop-retry-thresh", type=float, default=float(os.environ.get("XCCL_DROP_RETRY_DELTA_THRESH", "100.0")), help="周期内 ethtool drop/retry 总增量阈值")
+    ap.add_argument("--mode-margin", type=float, default=float(os.environ.get("XCCL_MODE_MARGIN", "0.10")), help="host/net 判因滞回边界")
     ap.add_argument("--severe", type=float, default=0.85, help="任 level >= 此值则 SEVERE")
     ap.add_argument("--caution", type=float, default=0.55, help="未 SEVERE 且 level >= 此值则 CAUTION")
     ap.add_argument("--dry-run", action="store_true", help="只打印不算写文件")
+    ap.add_argument(
+        "--host-signal-file",
+        default=os.environ.get("XCCL_HOST_SIGNAL_FILE")
+        or os.environ.get("NCCL_CC_HOST_SIGNAL_MMAP_PATH", "/dev/shm/xccl_host_signal_snapshot"),
+        help="NCCL host signal mmap 文件路径（S1: 只读融合）",
+    )
+    ap.add_argument(
+        "--cq-backlog-thresh",
+        type=float,
+        default=float(os.environ.get("XCCL_CQ_BACKLOG_THRESH", "128.0")),
+        help="cq_backlog 归一化阈值",
+    )
+    ap.add_argument(
+        "--completion-stretch-thresh",
+        type=float,
+        default=float(os.environ.get("XCCL_COMPLETION_STRETCH_THRESH", "1.5")),
+        help="completion stretch 归一化阈值（stretch-1 的分母）",
+    )
+    ap.add_argument(
+        "--control-file",
+        default=os.environ.get("XCCL_CONTROL_SNAPSHOT_FILE")
+        or os.environ.get("NCCL_CC_CONTROL_SNAPSHOT_MMAP_PATH", "/dev/shm/xccl_control_snapshot"),
+        help="XCCL control snapshot 输出路径（S3）",
+    )
+    ap.add_argument("--control-comm-key", type=int, default=int(os.environ.get("XCCL_CONTROL_COMM_KEY", "0")), help="control snapshot comm_key，0=wildcard")
+    ap.add_argument("--control-base-window", type=int, default=int(os.environ.get("XCCL_CONTROL_BASE_WINDOW", "256")))
+    ap.add_argument("--control-min-window", type=int, default=int(os.environ.get("XCCL_CONTROL_MIN_WINDOW", "16")))
+    ap.add_argument("--control-max-window", type=int, default=int(os.environ.get("XCCL_CONTROL_MAX_WINDOW", "512")))
+    ap.add_argument("--control-host-max-channels", type=int, default=int(os.environ.get("XCCL_CONTROL_HOST_MAX_CHANNELS", "4")))
+    ap.add_argument("--control-host-min-channels", type=int, default=int(os.environ.get("XCCL_CONTROL_HOST_MIN_CHANNELS", "1")))
+    ap.add_argument("--control-max-pacing-ns", type=int, default=int(os.environ.get("XCCL_CONTROL_MAX_PACING_NS", "50000")))
+    ap.add_argument("--control-switch-stable-epochs", type=int, default=int(os.environ.get("XCCL_CONTROL_SWITCH_STABLE_EPOCHS", "3")))
+    ap.add_argument("--control-cooldown-epochs", type=int, default=int(os.environ.get("XCCL_CONTROL_COOLDOWN_EPOCHS", "5")))
     args = ap.parse_args()
 
     if not args.file and not args.dry_run:
@@ -79,14 +117,27 @@ def main() -> None:
     if not args.dry_run:
         mm = open_mmap_region(args.file, length)
         init_zero(mm, length)
+    ctrl_mm = None
+    if not args.dry_run and args.control_file:
+        ctrl_mm = open_mmap_region(args.control_file, length)
+        init_zero(ctrl_mm, length)
 
     prev_net: dict[str, dict[str, int]] = {}
     prev_ecn: dict[str, int] = {}
     prev_rdma_bytes: dict[str, int] = {}
+    prev_drop_retry: dict[str, int] = {}
     t_prev: float | None = None
     debug = os.environ.get("XCCL_TELEMETRY_DEBUG", "").strip() in ("1", "true", "yes")
+    host_reader = HostSignalReader(args.host_signal_file)
+    active_mode = "MIXED"
+    mode_candidate = ""
+    mode_candidate_epochs = 0
+    mode_stable_epochs = 0
+    cooldown_left = 0
 
     print(f"sidecar: ifaces={ifaces} interval={args.interval_ms}ms file={args.file!r} dry_run={args.dry_run}", flush=True)
+    print(f"sidecar: host_signal_file={args.host_signal_file!r}", flush=True)
+    print(f"sidecar: control_file={args.control_file!r}", flush=True)
     print(
         "note: RoCE/GDR 流量常不计入 netdev rx_bytes/tx_bytes；rnic 已优先用 ethtool RDMA 字节计数",
         flush=True,
@@ -100,6 +151,7 @@ def main() -> None:
         rnic_max = 0.0
         ce_sum_delta = 0.0
         cnp_max = 0.0
+        drop_retry_sum_delta = 0.0
 
         for iface in ifaces:
             p = path_for_iface(iface)
@@ -111,6 +163,7 @@ def main() -> None:
             stats = read_netdev_statistics(p)
             eth = parse_ethtool_S(iface)
             rdma_total = mlx5_rdma_bytes_total(eth)
+            drop_retry_total = mlx5_drop_retry_total(eth)
 
             prev = prev_net.get(iface)
             if prev is not None:
@@ -139,6 +192,10 @@ def main() -> None:
                 ce_sum_delta += err
             prev_net[iface] = stats.copy()
             prev_rdma_bytes[iface] = rdma_total
+            p_dr = prev_drop_retry.get(iface)
+            if p_dr is not None:
+                drop_retry_sum_delta += max(0, drop_retry_total - p_dr)
+            prev_drop_retry[iface] = drop_retry_total
 
             ecn = int(eth.get("rx_ecn_mark", 0))
             p_e = prev_ecn.get(iface)
@@ -148,14 +205,96 @@ def main() -> None:
             prev_ecn[iface] = ecn
 
         ce_level = clamp01(ce_sum_delta / max(1e-6, args.ce_thresh))
-        pcie = read_psi_memory_some_avg10()
-        if pcie is None:
-            pcie = 0.0
+        drop_retry_norm = clamp01(drop_retry_sum_delta / max(1e-6, args.drop_retry_thresh))
+        psi = read_host_psi_mix_avg10()
+        psi_cpu = clamp01(psi["cpu"])
+        psi_mem = clamp01(psi["memory"])
+        psi_io = clamp01(psi["io"])
+        host_psi_mix = clamp01(psi["mix"])
+
+        host_frame = host_reader.read_frame()
+        cq_backlog_norm = 0.0
+        completion_stretch_norm = 0.0
+        cpu_poll_delay_norm = 0.0
+        host_score = host_psi_mix
+        if host_frame is not None:
+            cq_backlog_norm = clamp01(host_frame.cq_backlog / max(1e-6, args.cq_backlog_thresh))
+            completion_stretch_norm = clamp01(
+                (max(1.0, host_frame.completion_stretch) - 1.0)
+                / max(1e-6, args.completion_stretch_thresh)
+            )
+            cpu_poll_delay_norm = clamp01(host_frame.cpu_poll_delay_norm)
+            host_score = (
+                0.40 * cq_backlog_norm
+                + 0.35 * completion_stretch_norm
+                + 0.15 * cpu_poll_delay_norm
+                + 0.10 * host_psi_mix
+            )
+            host_score = clamp01(host_score)
+
+        rtt_stretch_norm = completion_stretch_norm
+        net_score = clamp01(
+            0.40 * cnp_max + 0.30 * rtt_stretch_norm + 0.20 * drop_retry_norm + 0.10 * rnic_max
+        )
+        if host_score > net_score + args.mode_margin:
+            raw_mode = "HOST"
+        elif net_score > host_score + args.mode_margin:
+            raw_mode = "NET"
         else:
-            pcie = clamp01(pcie)
+            raw_mode = "MIXED"
+
+        if raw_mode == active_mode:
+            mode_stable_epochs += 1
+            mode_candidate = ""
+            mode_candidate_epochs = 0
+        else:
+            if raw_mode == mode_candidate:
+                mode_candidate_epochs += 1
+            else:
+                mode_candidate = raw_mode
+                mode_candidate_epochs = 1
+            if cooldown_left == 0 and mode_candidate_epochs >= max(1, args.control_switch_stable_epochs):
+                active_mode = raw_mode
+                mode_stable_epochs = 1
+                mode_candidate = ""
+                mode_candidate_epochs = 0
+                cooldown_left = max(0, args.control_cooldown_epochs)
+            else:
+                mode_stable_epochs += 1
+
+        applied_mode = active_mode
+
+        max_score = max(host_score, net_score)
+        target_window = int(round(args.control_base_window))
+        target_channels = 0
+        pacing_ns = 0
+
+        if applied_mode == "HOST":
+            host_factor = clamp01(host_score)
+            target_window = int(round(args.control_base_window * (1.0 - 0.35 * host_factor)))
+            c_hi = max(args.control_host_min_channels, args.control_host_max_channels)
+            c_lo = max(1, min(args.control_host_min_channels, args.control_host_max_channels))
+            if c_hi == c_lo:
+                target_channels = c_lo
+            else:
+                target_channels = int(round(c_hi - (c_hi - c_lo) * host_factor))
+        elif applied_mode == "NET":
+            net_factor = clamp01(net_score)
+            target_window = int(round(args.control_base_window * (1.0 - 0.45 * net_factor)))
+            pacing_ns = int(round(args.control_max_pacing_ns * net_factor))
+        elif applied_mode == "MIXED":
+            mix_factor = clamp01(max_score)
+            target_window = int(round(args.control_base_window * (1.0 - 0.30 * mix_factor)))
+            target_channels = int(round(max(1, args.control_host_max_channels) * (1.0 - 0.5 * host_score)))
+            pacing_ns = int(round(args.control_max_pacing_ns * 0.5 * net_score))
+
+        target_window = max(args.control_min_window, min(args.control_max_window, target_window))
+        if target_channels > 0:
+            target_channels = max(1, min(0xFFFF, target_channels))
+        pacing_ns = max(0, min(0xFFFFFFFF, pacing_ns))
 
         flags = 0
-        levels = [cnp_max, ce_level, pcie, rnic_max]
+        levels = [host_score, net_score]
         mx = max(levels)
         if mx >= args.severe:
             flags |= XCCL_HINT_F_SEVERE
@@ -166,14 +305,42 @@ def main() -> None:
             # 100G 链路上「几千字节/200ms」对应利用率约 1e-6 量级，.4f 会全 0；附 ppm（占线速百万分比）便于人读
             rnic_ppm = rnic_max * 1e6
             print(
-                f"cnp={cnp_max:.4f} ce={ce_level:.4f} pcie={pcie:.4f} "
+                f"cnp={cnp_max:.4f} ce={ce_level:.4f} "
+                f"drop_retry={drop_retry_norm:.4f} "
+                f"host={host_score:.4f}(psi_mix={host_psi_mix:.4f},psi_cpu={psi_cpu:.4f},"
+                f"psi_mem={psi_mem:.4f},psi_io={psi_io:.4f},cq={cq_backlog_norm:.4f},"
+                f"stretch={completion_stretch_norm:.4f},cpu={cpu_poll_delay_norm:.4f}) "
+                f"net={net_score:.4f}(cnp={cnp_max:.4f},rtt={rtt_stretch_norm:.4f},"
+                f"drop_retry={drop_retry_norm:.4f},rnic={rnic_max:.4f}) "
+                f"mode={applied_mode} tw={target_window} tc={target_channels} pace_ns={pacing_ns} "
+                f"stable={mode_stable_epochs} cooldown={cooldown_left} "
                 f"rnic={rnic_max:.6f} ({rnic_ppm:.3f} ppm) flags={flags}",
                 flush=True,
             )
         else:
             assert mm is not None
-            publish_frame(mm, cnp_max, ce_level, pcie, rnic_max, flags)
+            ce_level_ext = max(ce_level, drop_retry_norm)
+            publish_frame(mm, cnp_max, ce_level_ext, host_score, rnic_max, flags)
             mm.flush()
+            if ctrl_mm is not None:
+                severity = 3 if (flags & XCCL_HINT_F_SEVERE) else (2 if (flags & XCCL_HINT_F_CAUTION) else 0)
+                publish_control_frame(
+                    ctrl_mm,
+                    args.control_comm_key,
+                    host_score,
+                    net_score,
+                    applied_mode,
+                    severity,
+                    target_channels,
+                    target_window,
+                    pacing_ns,
+                    cooldown_left,
+                    mode_stable_epochs,
+                )
+                ctrl_mm.flush()
+
+        if cooldown_left > 0:
+            cooldown_left -= 1
 
         elapsed = time.monotonic() - t_now
         sleep_s = max(0.0, interval_s - elapsed)

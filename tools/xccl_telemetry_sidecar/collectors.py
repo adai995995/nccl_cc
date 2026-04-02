@@ -6,7 +6,6 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from dataclasses import dataclass
 from typing import Dict, Optional
 
 
@@ -70,17 +69,12 @@ def parse_ethtool_S(iface: str) -> Dict[str, int]:
     return out
 
 
-@dataclass
-class PsiMemory:
-    some_avg10: Optional[float]  # 0~1 若可解析
-
-
-def read_psi_memory_some_avg10() -> Optional[float]:
+def read_psi_some_avg10(resource: str) -> Optional[float]:
     """
-    解析 /proc/pressure/memory 中 some avg10=xx.xx。
+    解析 /proc/pressure/<resource> 中 some avg10=xx.xx。
     返回 0~1（百分比/100）；文件不存在返回 None。
     """
-    path = "/proc/pressure/memory"
+    path = f"/proc/pressure/{resource}"
     if not os.path.isfile(path):
         return None
     try:
@@ -98,6 +92,23 @@ def read_psi_memory_some_avg10() -> Optional[float]:
         return None
     # avg10 为百分比，如 0.05 表示 0.05%
     return min(1.0, v / 100.0) if v <= 100.0 else min(1.0, v)
+
+
+def read_psi_memory_some_avg10() -> Optional[float]:
+    return read_psi_some_avg10("memory")
+
+
+def read_host_psi_mix_avg10() -> Dict[str, float]:
+    """
+    返回 cpu/memory/io 的 some avg10 以及 mix（平均值）。
+    不可用项按 0 处理。
+    """
+    cpu = read_psi_some_avg10("cpu")
+    mem = read_psi_some_avg10("memory")
+    io = read_psi_some_avg10("io")
+    vals = [v if v is not None else 0.0 for v in (cpu, mem, io)]
+    mix = (vals[0] + vals[1] + vals[2]) / 3.0
+    return {"cpu": vals[0], "memory": vals[1], "io": vals[2], "mix": mix}
 
 
 def path_for_iface(name: str) -> str:
@@ -124,3 +135,34 @@ def mlx5_rdma_bytes_total(eth: Dict[str, int]) -> int:
         return total
     # 回退：与 sysfs rx_bytes/tx_bytes 通常同量级，RoCE 也常体现在此
     return int(eth.get("rx_vport_unicast_bytes", 0)) + int(eth.get("tx_vport_unicast_bytes", 0))
+
+
+def mlx5_drop_retry_total(eth: Dict[str, int]) -> int:
+    """
+    从 ethtool -S 中提取 drop/retry/retrans/timeout 类单调计数总和。
+    仅用于周期增量，不要求绝对含义完全一致。
+    """
+    include_tokens = (
+        "retry",
+        "retrans",
+        "timeout",
+        "rnr",
+        "discard",
+        "drop",
+        "out_of_buffer",
+        "wqe_err",
+        "cqe_err",
+    )
+    exclude_tokens = (
+        "byte",
+        "packet",
+        "octet",
+        "frame",
+        "ecn",
+    )
+    total = 0
+    for k, v in eth.items():
+        lk = k.lower()
+        if any(t in lk for t in include_tokens) and not any(t in lk for t in exclude_tokens):
+            total += int(v)
+    return total
