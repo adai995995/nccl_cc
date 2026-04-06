@@ -13,7 +13,7 @@
 #define NCCL_CC_HOST_SIGNAL_SHM_NAME_ENV "NCCL_CC_HOST_SIGNAL_SHM_NAME"
 
 #define XCCL_HOST_SIGNAL_MAGIC 0x58484353U /* 'XHCS' */
-#define XCCL_HOST_SIGNAL_LAYOUT_VERSION 1
+#define XCCL_HOST_SIGNAL_LAYOUT_VERSION 2
 
 #pragma pack(push, 1)
 typedef struct {
@@ -27,11 +27,15 @@ typedef struct {
   uint32_t cq_posted;
   uint32_t cq_completed;
   uint32_t cq_backlog;
+  uint32_t cq_backlog_max;
 
   uint32_t rtt_baseline_us;
   uint32_t rtt_ewma_us;
   float completion_stretch;
   float cpu_poll_delay_norm;       /* reserved, currently 0 */
+  float cq_backlog_ewma;
+  float completion_drain_rate;
+  float poll_gap_norm;
 } XcclHostSignalSnapshot;
 #pragma pack(pop)
 

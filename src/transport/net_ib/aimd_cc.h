@@ -22,6 +22,10 @@
 // Phase 4：epoch 控制器（见 design_docs/xccl_phase4_epoch_controller_implementation_design.md）
 #define NCCL_CC_EPOCH_ENABLE_ENV "NCCL_CC_EPOCH_ENABLE"
 #define NCCL_CC_EPOCH_INTERVAL_NS_ENV "NCCL_CC_EPOCH_INTERVAL_NS"
+#define NCCL_AIMD_RECOVERY_ONLY_ENV "NCCL_AIMD_RECOVERY_ONLY"
+#define NCCL_CC_LOCAL_FALLBACK_HOLD_NS_ENV "NCCL_CC_LOCAL_FALLBACK_HOLD_NS"
+// v2-minimal：纯 NCCL 内部自闭环窗口控制（见 docs/decisgn2.md §3）
+#define NCCL_CC_V2_MINIMAL_ENV "NCCL_CC_V2_MINIMAL"
 // 以下为可调参数（在 aimd_cc.cc 的 GetOrCreateCollectiveCC 中解析），未设置时用默认值：
 //   NCCL_AIMD_MIN_WINDOW       默认 16    [1, 1024]
 //   NCCL_AIMD_MAX_WINDOW       默认 512   [1, 4096]
@@ -228,6 +232,7 @@ int ncclIbIsAIMDEnabled(void);
 int ncclIbCcMetricsEnabled(void);
 int ncclIbCcHintEnabled(void);
 int ncclIbCcEpochEnabled(void);
+int ncclIbCcV2MinimalEnabled(void);
 uint64_t ncclIbGetNanos(void);
 /* Phase 4：send/MultiSend 与 PostSendWithCC 准入上界（epoch 关闭时等价 lib_window） */
 int ncclCcGetEffectiveWindowForSend(const struct CollectiveCC* cc);

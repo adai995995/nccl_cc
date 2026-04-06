@@ -99,6 +99,56 @@ def main() -> None:
     ap.add_argument("--control-max-pacing-ns", type=int, default=int(os.environ.get("XCCL_CONTROL_MAX_PACING_NS", "50000")))
     ap.add_argument("--control-switch-stable-epochs", type=int, default=int(os.environ.get("XCCL_CONTROL_SWITCH_STABLE_EPOCHS", "3")))
     ap.add_argument("--control-cooldown-epochs", type=int, default=int(os.environ.get("XCCL_CONTROL_COOLDOWN_EPOCHS", "5")))
+    ap.add_argument(
+        "--control-window-max-step",
+        type=int,
+        default=int(os.environ.get("XCCL_CONTROL_WINDOW_MAX_STEP", "16")),
+        help="每个周期 target_window 最大变化步长",
+    )
+    ap.add_argument(
+        "--control-channel-update-period",
+        type=int,
+        default=int(os.environ.get("XCCL_CONTROL_CHANNEL_UPDATE_PERIOD", "3")),
+        help="target_channels 允许更新的最小周期数",
+    )
+    ap.add_argument(
+        "--control-pacing-smooth-alpha",
+        type=float,
+        default=float(os.environ.get("XCCL_CONTROL_PACING_SMOOTH_ALPHA", "0.35")),
+        help="pacing_ns 一阶平滑系数，越小越平滑",
+    )
+    ap.add_argument(
+        "--host-psi-weight",
+        type=float,
+        default=float(os.environ.get("XCCL_HOST_PSI_WEIGHT", "0.05")),
+        help="host_psi_mix 在 host 归因中的弱提示权重",
+    )
+    ap.add_argument(
+        "--host-psi-gate-backlog",
+        type=float,
+        default=float(os.environ.get("XCCL_HOST_PSI_GATE_BACKLOG", "0.10")),
+        help="backlog 低于该值时不放大 PSI",
+    )
+    ap.add_argument(
+        "--host-psi-gate-stretch",
+        type=float,
+        default=float(os.environ.get("XCCL_HOST_PSI_GATE_STRETCH", "0.10")),
+        help="stretch 低于该值时不放大 PSI",
+    )
+    ap.add_argument(
+        "--net-strong-thresh",
+        type=float,
+        default=float(os.environ.get("XCCL_NET_STRONG_THRESH", "0.60")),
+        help="host 信号不可用时，NET 归因所需强证据阈值",
+    )
+    ap.add_argument("--control-host-enter", type=float, default=float(os.environ.get("XCCL_CONTROL_HOST_ENTER", "0.55")))
+    ap.add_argument("--control-net-enter", type=float, default=float(os.environ.get("XCCL_CONTROL_NET_ENTER", "0.55")))
+    ap.add_argument("--control-recovery-enter", type=float, default=float(os.environ.get("XCCL_CONTROL_RECOVERY_ENTER", "0.75")))
+    ap.add_argument("--control-host-exit", type=float, default=float(os.environ.get("XCCL_CONTROL_HOST_EXIT", "0.35")))
+    ap.add_argument("--control-net-exit", type=float, default=float(os.environ.get("XCCL_CONTROL_NET_EXIT", "0.35")))
+    ap.add_argument("--control-normal-exit", type=float, default=float(os.environ.get("XCCL_CONTROL_NORMAL_EXIT", "0.30")))
+    ap.add_argument("--control-enter-epochs", type=int, default=int(os.environ.get("XCCL_CONTROL_ENTER_EPOCHS", "3")))
+    ap.add_argument("--control-exit-epochs", type=int, default=int(os.environ.get("XCCL_CONTROL_EXIT_EPOCHS", "5")))
     args = ap.parse_args()
 
     if not args.file and not args.dry_run:
@@ -134,6 +184,16 @@ def main() -> None:
     mode_candidate_epochs = 0
     mode_stable_epochs = 0
     cooldown_left = 0
+    backlog_ewma_norm = 0.0
+    backlog_spike_norm = 0.0
+    applied_target_window = int(round(args.control_base_window))
+    applied_target_channels = 0
+    applied_pacing_ns = 0
+    channel_hold_epochs = 0
+    should_control = False
+    control_state = "NORMAL"
+    enter_epochs = 0
+    exit_epochs = 0
 
     print(f"sidecar: ifaces={ifaces} interval={args.interval_ms}ms file={args.file!r} dry_run={args.dry_run}", flush=True)
     print(f"sidecar: host_signal_file={args.host_signal_file!r}", flush=True)
@@ -214,31 +274,53 @@ def main() -> None:
 
         host_frame = host_reader.read_frame()
         cq_backlog_norm = 0.0
+        cq_backlog_max_norm = 0.0
         completion_stretch_norm = 0.0
         cpu_poll_delay_norm = 0.0
-        host_score = host_psi_mix
+        drain_pressure_norm = 0.0
+        poll_gap_norm = 0.0
+        host_snapshot_ok = host_frame is not None
+        host_cause_score = 0.0
         if host_frame is not None:
-            cq_backlog_norm = clamp01(host_frame.cq_backlog / max(1e-6, args.cq_backlog_thresh))
+            backlog_for_cause = host_frame.cq_backlog_ewma if host_frame.cq_backlog_ewma > 0.0 else float(host_frame.cq_backlog)
+            cq_backlog_norm = clamp01(backlog_for_cause / max(1e-6, args.cq_backlog_thresh))
+            cq_backlog_max_norm = clamp01(float(host_frame.cq_backlog_max) / max(1e-6, args.cq_backlog_thresh))
             completion_stretch_norm = clamp01(
                 (max(1.0, host_frame.completion_stretch) - 1.0)
                 / max(1e-6, args.completion_stretch_thresh)
             )
-            cpu_poll_delay_norm = clamp01(host_frame.cpu_poll_delay_norm)
-            host_score = (
-                0.40 * cq_backlog_norm
-                + 0.35 * completion_stretch_norm
+            poll_gap_norm = clamp01(host_frame.poll_gap_norm)
+            cpu_poll_delay_norm = clamp01(max(host_frame.cpu_poll_delay_norm, poll_gap_norm))
+            drain_ratio = clamp01(host_frame.completion_drain_rate)
+            drain_pressure_norm = clamp01(1.0 - drain_ratio)
+            # backlog 分离“持续压力(ewma)”与“尖峰(spike)”；优先使用 NCCL 导出的 ewma/max
+            backlog_ewma_norm = cq_backlog_norm
+            backlog_spike_norm = max(backlog_spike_norm * 0.8, cq_backlog_max_norm)
+            psi_gate = 1.0 if (
+                backlog_ewma_norm >= args.host_psi_gate_backlog
+                or completion_stretch_norm >= args.host_psi_gate_stretch
+            ) else 0.0
+            host_cause_score = clamp01(
+                0.60 * backlog_ewma_norm
+                + 0.20 * drain_pressure_norm
                 + 0.15 * cpu_poll_delay_norm
-                + 0.10 * host_psi_mix
+                + max(0.0, min(0.20, args.host_psi_weight)) * host_psi_mix * psi_gate
             )
-            host_score = clamp01(host_score)
+        else:
+            # host 根因信号缺失时，不以 PSI 直接代替 host 归因
+            backlog_ewma_norm *= 0.9
+            backlog_spike_norm *= 0.9
 
-        rtt_stretch_norm = completion_stretch_norm
-        net_score = clamp01(
-            0.40 * cnp_max + 0.30 * rtt_stretch_norm + 0.20 * drop_retry_norm + 0.10 * rnic_max
+        symptom_score = completion_stretch_norm
+        net_cause_score = clamp01(
+            0.65 * cnp_max + 0.30 * drop_retry_norm + 0.05 * rnic_max
         )
-        if host_score > net_score + args.mode_margin:
+        if host_snapshot_ok and host_cause_score > net_cause_score + args.mode_margin:
             raw_mode = "HOST"
-        elif net_score > host_score + args.mode_margin:
+        elif net_cause_score > host_cause_score + args.mode_margin:
+            raw_mode = "NET"
+        elif (not host_snapshot_ok) and net_cause_score >= args.net_strong_thresh:
+            # host 缺失时，仅在 net 强证据成立下进入 NET；否则保持保守
             raw_mode = "NET"
         else:
             raw_mode = "MIXED"
@@ -262,15 +344,61 @@ def main() -> None:
             else:
                 mode_stable_epochs += 1
 
-        applied_mode = active_mode
+        # 先做控制门控：避免把 AIMD/外控当作常态兜底
+        enter_cond = (host_cause_score >= args.control_host_enter) or (net_cause_score >= args.control_net_enter)
+        exit_cond = (
+            host_cause_score <= args.control_host_exit
+            and net_cause_score <= args.control_net_exit
+            and symptom_score <= args.control_normal_exit
+        )
+        if not should_control:
+            enter_epochs = enter_epochs + 1 if enter_cond else 0
+            exit_epochs = 0
+            if enter_epochs >= max(1, args.control_enter_epochs):
+                should_control = True
+                enter_epochs = 0
+        else:
+            exit_epochs = exit_epochs + 1 if exit_cond else 0
+            enter_epochs = 0
+            if exit_epochs >= max(1, args.control_exit_epochs):
+                should_control = False
+                exit_epochs = 0
 
-        max_score = max(host_score, net_score)
+        if not should_control:
+            control_state = "NORMAL"
+        else:
+            sev = max(host_cause_score, net_cause_score, symptom_score)
+            control_state = "RECOVERY" if sev >= args.control_recovery_enter else "GUARDED"
+
+        applied_mode = active_mode if should_control else "NORMAL"
+
+        max_score = max(host_cause_score, net_cause_score, symptom_score)
         target_window = int(round(args.control_base_window))
         target_channels = 0
         pacing_ns = 0
 
-        if applied_mode == "HOST":
-            host_factor = clamp01(host_score)
+        if control_state == "NORMAL":
+            # 显式 no-control：尽量贴近原生 NCCL 行为
+            target_window = int(round(args.control_base_window))
+            target_channels = 0
+            pacing_ns = 0
+        elif control_state == "GUARDED" and applied_mode == "HOST":
+            host_factor = clamp01(host_cause_score)
+            target_window = int(round(args.control_base_window * (1.0 - 0.15 * host_factor)))
+            c_hi = max(args.control_host_min_channels, args.control_host_max_channels)
+            c_lo = max(1, min(args.control_host_min_channels, args.control_host_max_channels))
+            target_channels = int(round(c_hi - 0.5 * (c_hi - c_lo) * host_factor))
+        elif control_state == "GUARDED" and applied_mode == "NET":
+            net_factor = clamp01(net_cause_score)
+            target_window = int(round(args.control_base_window * (1.0 - 0.20 * net_factor)))
+            pacing_ns = int(round(args.control_max_pacing_ns * 0.40 * net_factor))
+        elif control_state == "GUARDED" and applied_mode == "MIXED":
+            mix_factor = clamp01(max_score)
+            target_window = int(round(args.control_base_window * (1.0 - 0.12 * mix_factor)))
+            target_channels = int(round(max(1, args.control_host_max_channels) * (1.0 - 0.30 * host_cause_score)))
+            pacing_ns = int(round(args.control_max_pacing_ns * 0.25 * net_cause_score))
+        elif applied_mode == "HOST":
+            host_factor = clamp01(host_cause_score)
             target_window = int(round(args.control_base_window * (1.0 - 0.35 * host_factor)))
             c_hi = max(args.control_host_min_channels, args.control_host_max_channels)
             c_lo = max(1, min(args.control_host_min_channels, args.control_host_max_channels))
@@ -279,22 +407,47 @@ def main() -> None:
             else:
                 target_channels = int(round(c_hi - (c_hi - c_lo) * host_factor))
         elif applied_mode == "NET":
-            net_factor = clamp01(net_score)
+            net_factor = clamp01(net_cause_score)
             target_window = int(round(args.control_base_window * (1.0 - 0.45 * net_factor)))
             pacing_ns = int(round(args.control_max_pacing_ns * net_factor))
         elif applied_mode == "MIXED":
             mix_factor = clamp01(max_score)
             target_window = int(round(args.control_base_window * (1.0 - 0.30 * mix_factor)))
-            target_channels = int(round(max(1, args.control_host_max_channels) * (1.0 - 0.5 * host_score)))
-            pacing_ns = int(round(args.control_max_pacing_ns * 0.5 * net_score))
+            target_channels = int(round(max(1, args.control_host_max_channels) * (1.0 - 0.5 * host_cause_score)))
+            pacing_ns = int(round(args.control_max_pacing_ns * 0.5 * net_cause_score))
 
         target_window = max(args.control_min_window, min(args.control_max_window, target_window))
         if target_channels > 0:
             target_channels = max(1, min(0xFFFF, target_channels))
         pacing_ns = max(0, min(0xFFFFFFFF, pacing_ns))
 
+        # Actuator 防抖：模式稳定不等于动作可大跳
+        if control_state == "NORMAL":
+            applied_target_window = int(round(args.control_base_window))
+            applied_target_channels = 0
+            applied_pacing_ns = 0
+            channel_hold_epochs = 0
+            target_window = applied_target_window
+            target_channels = applied_target_channels
+            pacing_ns = applied_pacing_ns
+        else:
+            wstep = max(1, args.control_window_max_step)
+            target_window = max(applied_target_window - wstep, min(applied_target_window + wstep, target_window))
+            applied_target_window = target_window
+
+            channel_hold_epochs += 1
+            channel_period = max(1, args.control_channel_update_period)
+            if channel_hold_epochs >= channel_period:
+                applied_target_channels = target_channels
+                channel_hold_epochs = 0
+            target_channels = applied_target_channels
+
+            p_alpha = clamp01(args.control_pacing_smooth_alpha)
+            applied_pacing_ns = int(round((1.0 - p_alpha) * applied_pacing_ns + p_alpha * pacing_ns))
+            pacing_ns = max(0, min(0xFFFFFFFF, applied_pacing_ns))
+
         flags = 0
-        levels = [host_score, net_score]
+        levels = [host_cause_score, net_cause_score, symptom_score]
         mx = max(levels)
         if mx >= args.severe:
             flags |= XCCL_HINT_F_SEVERE
@@ -307,28 +460,32 @@ def main() -> None:
             print(
                 f"cnp={cnp_max:.4f} ce={ce_level:.4f} "
                 f"drop_retry={drop_retry_norm:.4f} "
-                f"host={host_score:.4f}(psi_mix={host_psi_mix:.4f},psi_cpu={psi_cpu:.4f},"
+                f"host_cause={host_cause_score:.4f}(psi_mix={host_psi_mix:.4f},psi_cpu={psi_cpu:.4f},"
                 f"psi_mem={psi_mem:.4f},psi_io={psi_io:.4f},cq={cq_backlog_norm:.4f},"
-                f"stretch={completion_stretch_norm:.4f},cpu={cpu_poll_delay_norm:.4f}) "
-                f"net={net_score:.4f}(cnp={cnp_max:.4f},rtt={rtt_stretch_norm:.4f},"
+                f"cq_max={cq_backlog_max_norm:.4f},cq_ewma={backlog_ewma_norm:.4f},cq_spike={backlog_spike_norm:.4f},"
+                f"drain={drain_pressure_norm:.4f},poll_gap={poll_gap_norm:.4f},cpu={cpu_poll_delay_norm:.4f},"
+                f"host_ok={1 if host_snapshot_ok else 0}) "
+                f"net_cause={net_cause_score:.4f}(cnp={cnp_max:.4f},"
                 f"drop_retry={drop_retry_norm:.4f},rnic={rnic_max:.4f}) "
-                f"mode={applied_mode} tw={target_window} tc={target_channels} pace_ns={pacing_ns} "
-                f"stable={mode_stable_epochs} cooldown={cooldown_left} "
+                f"symptom={symptom_score:.4f}(stretch={completion_stretch_norm:.4f}) "
+                f"mode={applied_mode} should_ctl={1 if should_control else 0} state={control_state} "
+                f"tw={target_window} tc={target_channels} pace_ns={pacing_ns} "
+                f"enter={enter_epochs} exit={exit_epochs} stable={mode_stable_epochs} cooldown={cooldown_left} "
                 f"rnic={rnic_max:.6f} ({rnic_ppm:.3f} ppm) flags={flags}",
                 flush=True,
             )
         else:
             assert mm is not None
             ce_level_ext = max(ce_level, drop_retry_norm)
-            publish_frame(mm, cnp_max, ce_level_ext, host_score, rnic_max, flags)
+            publish_frame(mm, cnp_max, ce_level_ext, host_cause_score, rnic_max, flags)
             mm.flush()
             if ctrl_mm is not None:
                 severity = 3 if (flags & XCCL_HINT_F_SEVERE) else (2 if (flags & XCCL_HINT_F_CAUTION) else 0)
                 publish_control_frame(
                     ctrl_mm,
                     args.control_comm_key,
-                    host_score,
-                    net_score,
+                    host_cause_score,
+                    net_cause_score,
                     applied_mode,
                     severity,
                     target_channels,

@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <errno.h>
 
 // ============================================================================
 // 全局变量
@@ -38,6 +39,20 @@ static int g_cc_control_thread_started = 0;
 static volatile int g_cc_control_thread_running = 0;
 static uint64_t g_cc_control_plane_interval_us = 1000ULL; // 默认 1ms
 static uint64_t g_cc_external_snapshot_ttl_ns = 20000000ULL; // 默认 20ms
+static int g_aimd_recovery_only = -1; // 1=仅恢复态允许本地 AIMD 回退
+static uint64_t g_cc_local_fallback_hold_ns = 50000000ULL; // 默认 50ms
+
+// v2-minimal 全局参数
+static FILE* g_v2_timeline_fp = NULL;
+static int   g_cc_v2_minimal = -1;
+static float g_v2_pressure_thresh = 0.50f;
+static float g_v2_exit_thresh     = 0.20f;
+static int   g_v2_enter_epochs    = 10;
+static int   g_v2_exit_epochs     = 20;
+static float g_v2_beta            = 0.7f;
+static int   g_v2_alpha           = 1;
+static float g_v2_backlog_thresh  = 32.0f;
+static float g_v2_window_floor    = 0.4f;
 
 static inline int ncclCcLoadInt(const volatile int* p) {
     return __atomic_load_n(p, __ATOMIC_RELAXED);
@@ -61,6 +76,12 @@ static inline uint64_t ncclCcLoadU64(const volatile uint64_t* p) {
 
 static inline void ncclCcStoreU64(volatile uint64_t* p, uint64_t v) {
     __atomic_store_n(p, v, __ATOMIC_RELAXED);
+}
+
+static inline float ncclCcClamp01f(float x) {
+    if (x < 0.0f) return 0.0f;
+    if (x > 1.0f) return 1.0f;
+    return x;
 }
 
 // ============================================================================
@@ -101,12 +122,78 @@ int ncclIbCcEpochEnabled(void) {
     return g_cc_epoch_enabled;
 }
 
+int ncclIbCcV2MinimalEnabled(void) {
+    if (g_cc_v2_minimal == -1) {
+        const char* e = getenv(NCCL_CC_V2_MINIMAL_ENV);
+        g_cc_v2_minimal = (e && atoi(e) > 0 && ncclIbIsAIMDEnabled()) ? 1 : 0;
+        if (g_cc_v2_minimal) {
+            const char* v;
+            v = getenv("NCCL_CC_V2_PRESSURE_THRESH"); if (v) { float f = (float)atof(v); if (f > 0.f && f <= 1.f) g_v2_pressure_thresh = f; }
+            v = getenv("NCCL_CC_V2_EXIT_THRESH");     if (v) { float f = (float)atof(v); if (f > 0.f && f <= 1.f) g_v2_exit_thresh = f; }
+            v = getenv("NCCL_CC_V2_ENTER_EPOCHS");    if (v) { int n = atoi(v); if (n >= 1 && n <= 1000) g_v2_enter_epochs = n; }
+            v = getenv("NCCL_CC_V2_EXIT_EPOCHS");     if (v) { int n = atoi(v); if (n >= 1 && n <= 1000) g_v2_exit_epochs = n; }
+            v = getenv("NCCL_CC_V2_BETA");             if (v) { float f = (float)atof(v); if (f > 0.f && f < 1.f) g_v2_beta = f; }
+            v = getenv("NCCL_CC_V2_ALPHA");            if (v) { int n = atoi(v); if (n >= 1 && n <= 100) g_v2_alpha = n; }
+            v = getenv("NCCL_CC_V2_BACKLOG_THRESH");   if (v) { float f = (float)atof(v); if (f > 0.f) g_v2_backlog_thresh = f; }
+            v = getenv("NCCL_CC_V2_WINDOW_FLOOR");     if (v) { float f = (float)atof(v); if (f > 0.f && f <= 1.f) g_v2_window_floor = f; }
+            INFO(NCCL_ENV, "V2-minimal enabled: pressure_thresh=%.2f exit_thresh=%.2f enter=%d exit=%d beta=%.2f alpha=%d backlog_thresh=%.0f window_floor=%.2f",
+                 g_v2_pressure_thresh, g_v2_exit_thresh, g_v2_enter_epochs, g_v2_exit_epochs,
+                 g_v2_beta, g_v2_alpha, g_v2_backlog_thresh, g_v2_window_floor);
+
+            const char* tl = getenv("NCCL_CC_V2_TIMELINE_FILE");
+            if (tl && tl[0]) {
+                g_v2_timeline_fp = fopen(tl, "w");
+                if (g_v2_timeline_fp) {
+                    fprintf(g_v2_timeline_fp,
+                            "ts_us,pressure,backlog_norm,deviation,state,window,floor,high_cnt,low_cnt,fast_ewma,slow_ewma\n");
+                    fflush(g_v2_timeline_fp);
+                    INFO(NCCL_ENV, "V2-minimal timeline logging to: %s", tl);
+                }
+            }
+        }
+    }
+    return g_cc_v2_minimal;
+}
+
+static int ncclIbAimdRecoveryOnly(void) {
+    if (g_aimd_recovery_only == -1) {
+        const char* e = getenv(NCCL_AIMD_RECOVERY_ONLY_ENV);
+        g_aimd_recovery_only = (e && atoi(e) > 0) ? 1 : 0;
+    }
+    return g_aimd_recovery_only;
+}
+
+static float ncclCcOracleFactor(void) {
+    static float f = -1.0f;
+    if (f < 0.0f) {
+        const char* e = getenv("NCCL_CC_ORACLE_FACTOR");
+        f = (e && e[0]) ? (float)atof(e) : 1.0f;
+        if (f < 0.1f) f = 0.1f;
+        if (f > 1.0f) f = 1.0f;
+        if (f < 1.0f) {
+            INFO(NCCL_ENV, "NCCL_CC_ORACLE_FACTOR=%.2f (oracle mode: window scaled)", f);
+        }
+    }
+    return f;
+}
+
 int ncclCcGetEffectiveWindowForSend(const struct CollectiveCC* cc) {
     if (!cc) return 0;
     int ew = ncclCcLoadInt(&cc->effective_window);
     int ext = ncclCcLoadInt(&cc->external_control_active);
-    if (ew > 0 && (ext || ncclIbCcEpochEnabled())) return ew;
-    return ncclCcLoadInt(&cc->lib_window);
+    int base;
+    if (ew > 0 && (ext || ncclIbCcEpochEnabled())) {
+        base = ew;
+    } else {
+        base = ncclCcLoadInt(&cc->lib_window);
+    }
+    float factor = ncclCcOracleFactor();
+    if (factor < 1.0f) {
+        int adjusted = (int)(base * factor);
+        if (adjusted < cc->min_window) adjusted = cc->min_window;
+        return adjusted;
+    }
+    return base;
 }
 
 int ncclCcGetEffectiveChannelsForSend(const struct CollectiveCC* cc, int total_qps) {
@@ -130,10 +217,12 @@ uint64_t ncclIbGetNanos(void) {
 }
 
 static void ncclCcControlPlaneSleepUs(uint64_t us) {
-    struct timespec ts;
+    struct timespec ts, rem;
     ts.tv_sec = (time_t)(us / 1000000ULL);
     ts.tv_nsec = (long)((us % 1000000ULL) * 1000ULL);
-    nanosleep(&ts, NULL);
+    while (nanosleep(&ts, &rem) == -1 && errno == EINTR) {
+        ts = rem;
+    }
 }
 
 void ncclCcApplyPacingForSend(struct CollectiveCC* cc) {
@@ -185,6 +274,16 @@ static void ncclCcExternalSnapshotTtlInitOnce(void) {
     if (!e || !e[0]) return;
     uint64_t v = (uint64_t)strtoull(e, NULL, 10);
     if (v >= 1000000ULL && v <= 10000000000ULL) g_cc_external_snapshot_ttl_ns = v;
+}
+
+static void ncclCcLocalFallbackHoldInitOnce(void) {
+    static int done;
+    if (done) return;
+    done = 1;
+    const char* e = getenv(NCCL_CC_LOCAL_FALLBACK_HOLD_NS_ENV);
+    if (!e || !e[0]) return;
+    uint64_t v = (uint64_t)strtoull(e, NULL, 10);
+    if (v >= 1000000ULL && v <= 10000000000ULL) g_cc_local_fallback_hold_ns = v;
 }
 
 static uint64_t g_hint_refresh_min_ns = 10000000ULL; /* 10ms 默认 */
@@ -311,6 +410,12 @@ static void ncclCcApplyExternalSnapshot(struct CollectiveCC* cc, const XcclContr
 
 static void* ncclCcControlPlaneThreadMain(void* arg) {
     (void)arg;
+    int recovery_only = ncclIbAimdRecoveryOnly();
+    ncclCcLocalFallbackHoldInitOnce();
+    float agg_backlog_ewma = 0.0f;
+    uint64_t prev_agg_posted = 0ULL;
+    uint64_t prev_agg_completed = 0ULL;
+    uint64_t last_progress_ts_ns = 0ULL;
     while (g_cc_control_thread_running) {
         struct CollectiveCC* local_ccs[NCCL_CC_MAX_COLLECTIVES];
         int ncc = 0;
@@ -331,22 +436,38 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
 
         uint64_t agg_posted = 0;
         uint64_t agg_completed = 0;
-        uint32_t agg_backlog = 0;
+        uint64_t agg_backlog_sum = 0ULL;
+        uint32_t agg_backlog_max = 0;
         uint32_t agg_rtt_baseline = 0;
         uint32_t agg_rtt_ewma = 0;
         float agg_stretch = 1.0f;
 
+        int v2_active = ncclIbCcV2MinimalEnabled();
         for (int i = 0; i < ncc; i++) {
             struct CollectiveCC* cc = local_ccs[i];
-            if (external_active) {
+            if (v2_active) {
+                ncclCcStoreInt(&cc->external_control_active, 0);
+            } else if (external_active) {
                 ncclCcApplyExternalSnapshot(cc, &snap, snap_ok, now_ns);
-                if (!ncclCcLoadInt(&cc->external_control_active)) {
-                    // 外部快照不可用/过期/comm 不匹配：回退本地 AIMD，避免窗口静态停留
-                    ncclIbUpdateLIWLocal(cc);
+                int ext_applied = ncclCcLoadInt(&cc->external_control_active);
+                if (!ext_applied) {
+                    int allow_local = 1;
+                    if (recovery_only) {
+                        allow_local = 0;
+                    } else {
+                        uint64_t last_ext = cc->external_snapshot_ts_ns;
+                        if (last_ext > 0 && now_ns > last_ext &&
+                            now_ns - last_ext < g_cc_local_fallback_hold_ns) {
+                            allow_local = 0;
+                        }
+                    }
+                    if (allow_local) {
+                        ncclIbUpdateLIWLocal(cc);
+                    }
                 }
             } else {
                 ncclCcStoreInt(&cc->external_control_active, 0);
-                ncclIbUpdateLIWLocal(cc);
+                if (!recovery_only) ncclIbUpdateLIWLocal(cc);
             }
 
             uint64_t posted = ncclCcLoadU64(&cc->cq_posted_total);
@@ -355,8 +476,9 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
             agg_completed += completed;
 
             uint64_t backlog64 = (posted > completed) ? (posted - completed) : 0ULL;
-            if (backlog64 > (uint64_t)agg_backlog) {
-                agg_backlog = (backlog64 > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)backlog64;
+            agg_backlog_sum += backlog64;
+            if (backlog64 > (uint64_t)agg_backlog_max) {
+                agg_backlog_max = (backlog64 > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)backlog64;
             }
 
             pthread_mutex_lock(&cc->mutex);
@@ -377,6 +499,161 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
             }
         }
 
+        uint32_t agg_backlog = (agg_backlog_sum > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_backlog_sum;
+        float backlog_now = (float)agg_backlog;
+        if (agg_backlog_ewma == 0.0f) {
+            agg_backlog_ewma = backlog_now;
+        } else {
+            agg_backlog_ewma = 0.2f * backlog_now + 0.8f * agg_backlog_ewma;
+        }
+
+        uint64_t delta_posted = (agg_posted >= prev_agg_posted) ? (agg_posted - prev_agg_posted) : 0ULL;
+        uint64_t delta_completed = (agg_completed >= prev_agg_completed) ? (agg_completed - prev_agg_completed) : 0ULL;
+        float completion_drain_rate = 1.0f;
+        if (delta_posted > 0ULL) {
+            completion_drain_rate = (float)delta_completed / (float)delta_posted;
+        } else if (delta_completed == 0ULL) {
+            completion_drain_rate = 0.0f;
+        } else {
+            completion_drain_rate = 1.0f;
+        }
+        if (completion_drain_rate < 0.0f) completion_drain_rate = 0.0f;
+        if (completion_drain_rate > 4.0f) completion_drain_rate = 4.0f;
+
+        if (delta_completed > 0ULL) last_progress_ts_ns = now_ns;
+        if (last_progress_ts_ns == 0ULL) last_progress_ts_ns = now_ns;
+        uint64_t no_progress_ns = (now_ns >= last_progress_ts_ns) ? (now_ns - last_progress_ts_ns) : 0ULL;
+        uint64_t base_gap_ns = g_cc_control_plane_interval_us * 1000ULL * 5ULL; // 5 个控制周期
+        if (base_gap_ns == 0ULL) base_gap_ns = 1ULL;
+        float poll_gap_norm = ncclCcClamp01f((float)no_progress_ns / (float)base_gap_ns);
+
+        prev_agg_posted = agg_posted;
+        prev_agg_completed = agg_completed;
+
+        // ================================================================
+        // v2-minimal 分支：纯 NCCL 内部自闭环窗口控制
+        // ================================================================
+        if (ncclIbCcV2MinimalEnabled()) {
+            float backlog_norm = ncclCcClamp01f(agg_backlog_ewma / g_v2_backlog_thresh);
+
+            // 快慢双 EWMA 自适应基线检测
+            // fast: tau ≈ 50 epochs (50ms)，快速跟踪短期变化
+            // slow: tau ≈ 2000 epochs (2s)，代表长期基线水平
+            static float v2_fast_ewma = -1.0f;
+            static float v2_slow_ewma = -1.0f;
+            static int v2_warmup_count = 0;
+
+            if (v2_fast_ewma < 0.0f) {
+                v2_fast_ewma = backlog_norm;
+                v2_slow_ewma = backlog_norm;
+            }
+            v2_fast_ewma = 0.02f * backlog_norm + 0.98f * v2_fast_ewma;
+
+            if (v2_warmup_count < 500) { v2_warmup_count++; }
+
+            float deviation = v2_fast_ewma - v2_slow_ewma;
+            // warmup 期间抑制信号（前 500ms baseline 尚未稳定）
+            float v2_pressure = (v2_warmup_count >= 500) ?
+                ncclCcClamp01f(deviation / 0.04f) : 0.0f;
+
+            static int v2_high_count = 0;
+            static int v2_low_count = 0;
+
+            if (v2_pressure >= g_v2_pressure_thresh) {
+                v2_high_count++;
+                v2_low_count = 0;
+            } else if (v2_pressure <= g_v2_exit_thresh) {
+                v2_low_count++;
+                v2_high_count = 0;
+            } else {
+                // 中间区域：不改变计数器，维持当前状态
+            }
+
+            int v2_should_shrink  = (v2_high_count >= g_v2_enter_epochs);
+            int v2_should_recover = (v2_low_count  >= g_v2_exit_epochs);
+
+            // 仅在非 SHRINK 态更新 slow baseline，避免基线被异常期 backlog 拉高
+            if (!v2_should_shrink) {
+                v2_slow_ewma = 0.0005f * backlog_norm + 0.9995f * v2_slow_ewma;
+            }
+
+            for (int i = 0; i < ncc; i++) {
+                struct CollectiveCC* cc = local_ccs[i];
+                int cur_w = ncclCcLoadInt(&cc->lib_window);
+                int new_w = cur_w;
+                int floor_w = (int)((float)cc->max_window * g_v2_window_floor);
+                if (floor_w < cc->min_window) floor_w = cc->min_window;
+
+                if (v2_should_shrink) {
+                    new_w = (int)((float)cur_w * g_v2_beta);
+                } else if (v2_should_recover) {
+                    int gap = cc->max_window - cur_w;
+                    int step = g_v2_alpha + gap / 16;
+                    new_w = cur_w + step;
+                    if (new_w > cc->max_window) new_w = cc->max_window;
+                }
+
+                if (new_w < floor_w) new_w = floor_w;
+
+                ncclCcStoreInt(&cc->lib_window, new_w);
+                ncclCcStoreInt(&cc->effective_window, new_w);
+                ncclCcStoreInt(&cc->effective_channels, 0);
+                ncclCcStoreU32(&cc->effective_pacing_ns, 0);
+            }
+
+            {
+                int w0 = (ncc > 0) ? ncclCcLoadInt(&local_ccs[0]->effective_window) : -1;
+                int fl0 = (ncc > 0) ? (int)((float)local_ccs[0]->max_window * g_v2_window_floor) : 0;
+                const char* state = v2_should_shrink ? "SHRINK" : (v2_should_recover ? "RECOVER" : "HOLD");
+
+                if (g_v2_timeline_fp) {
+                    uint64_t ts_us = now_ns / 1000ULL;
+                    fprintf(g_v2_timeline_fp,
+                            "%lu,%.4f,%.4f,%.5f,%s,%d,%d,%d,%d,%.4f,%.4f\n",
+                            (unsigned long)ts_us, v2_pressure, backlog_norm,
+                            deviation, state, w0, fl0, v2_high_count, v2_low_count,
+                            v2_fast_ewma, v2_slow_ewma);
+                }
+
+                static uint64_t v2_last_log_us = 0;
+                uint64_t v2_now_us = ncclIbGetMicros();
+                if (v2_last_log_us == 0 || v2_now_us - v2_last_log_us >= 5000000ULL) {
+                    INFO(NCCL_NET, "V2MIN: pressure=%.3f (fast=%.3f slow=%.3f dev=%.4f) state=%s window=%d floor=%d high=%d low=%d ncc=%d",
+                         v2_pressure, v2_fast_ewma, v2_slow_ewma, deviation, state, w0, fl0,
+                         v2_high_count, v2_low_count, ncc);
+                    v2_last_log_us = v2_now_us;
+                }
+            }
+
+            // 发布 HostSignalSnapshot（供外部观测，不做控制输入）
+            if (xcclHostSignalSnapshotEnabled() && xcclHostSignalSnapshotIsMapped()) {
+                XcclHostSignalSnapshot hs;
+                memset(&hs, 0, sizeof(hs));
+                hs.magic = XCCL_HOST_SIGNAL_MAGIC;
+                hs.layout_version = XCCL_HOST_SIGNAL_LAYOUT_VERSION;
+                hs.struct_size = (uint16_t)sizeof(XcclHostSignalSnapshot);
+                hs.comm_key = 0ULL;
+                hs.ts_ns = now_ns;
+                hs.cq_posted = (agg_posted > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_posted;
+                hs.cq_completed = (agg_completed > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_completed;
+                hs.cq_backlog = agg_backlog;
+                hs.cq_backlog_max = agg_backlog_max;
+                hs.rtt_baseline_us = agg_rtt_baseline;
+                hs.rtt_ewma_us = agg_rtt_ewma;
+                hs.completion_stretch = agg_stretch;
+                hs.cpu_poll_delay_norm = 0.0f;
+                hs.cq_backlog_ewma = agg_backlog_ewma;
+                hs.completion_drain_rate = completion_drain_rate;
+                hs.poll_gap_norm = poll_gap_norm;
+                (void)xcclHostSignalSnapshotPublish(&hs);
+            }
+
+            ncclCcControlPlaneSleepUs(g_cc_control_plane_interval_us);
+            continue; // 跳过后续 full-system 路径
+        }
+        // ================================================================
+        // 以下为现有 full-system 路径（v2-minimal 不走）
+        // ================================================================
         if (xcclHostSignalSnapshotEnabled() && xcclHostSignalSnapshotIsMapped()) {
             XcclHostSignalSnapshot hs;
             memset(&hs, 0, sizeof(hs));
@@ -388,10 +665,14 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
             hs.cq_posted = (agg_posted > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_posted;
             hs.cq_completed = (agg_completed > 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)agg_completed;
             hs.cq_backlog = agg_backlog;
+            hs.cq_backlog_max = agg_backlog_max;
             hs.rtt_baseline_us = agg_rtt_baseline;
             hs.rtt_ewma_us = agg_rtt_ewma;
             hs.completion_stretch = agg_stretch;
             hs.cpu_poll_delay_norm = 0.0f;
+            hs.cq_backlog_ewma = agg_backlog_ewma;
+            hs.completion_drain_rate = completion_drain_rate;
+            hs.poll_gap_norm = poll_gap_norm;
             (void)xcclHostSignalSnapshotPublish(&hs);
         }
 
@@ -1108,7 +1389,8 @@ static void ncclIbUpdateLIWLocal(struct CollectiveCC* cc) {
 
 void ncclIbUpdateLIW(struct CollectiveCC* cc) {
     if (!cc || !cc->enabled) return;
-    if (ncclCcLoadInt(&cc->external_control_active)) return; // 外部快照生效时，禁用本地控制律
+    if (ncclCcLoadInt(&cc->external_control_active)) return;
+    if (ncclIbCcV2MinimalEnabled()) return; // v2-minimal 独占窗口控制权
     ncclIbUpdateLIWLocal(cc);
 }
 
@@ -1134,6 +1416,9 @@ ncclResult_t ncclIbAIMDInit(void) {
     NCCLCHECK(ncclIbInitShadowPool());
     NCCLCHECK(ncclIbInitCCPool());
     ncclCcControlPlaneIntervalInitOnce();
+
+    if (g_cc_control_thread_started) return ncclSuccess;
+
     g_cc_control_thread_running = 1;
     if (pthread_create(&g_cc_control_thread, NULL, ncclCcControlPlaneThreadMain, NULL) != 0) {
         g_cc_control_thread_running = 0;
