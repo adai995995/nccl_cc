@@ -1,0 +1,54 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=1.0
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca4001000 slot=0 inflight_before=1
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca8001000 slot=730 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3c9000a440 slot=292 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca0065be0 slot=712 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3c9000a440 slot=108 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f3c9000a440 slot=582 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f3c9c007020 slot=21 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca8017320 slot=461 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca8001000 slot=1015 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3c9000a440 slot=371 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca8001000 slot=719 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca8001000 slot=18 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3c9000a440 slot=368 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca8001000 slot=793 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f3c8c001000 slot=142 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca0065be0 slot=508 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f3c940c7700 slot=845 inflight_before=5
+[AIMD] FinalizeChunkRTT: cc=0x7f3ca0065be0 slot=186 inflight_before=4
+CSV written to: oracle_results/3_aimd_native_pinned_with_stress_20260409_111448_r3.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=1.0
+
+Wall-clock latency (us):
+  mean= 34032.3  stddev= 15478.3
+  p50 = 31818.5  p99   = 68966.1  max= 87881.2
+
+Collective max GPU latency (us):
+  mean= 32816.5  stddev= 15407.6
+  p50 = 30517.8  p99   = 68949.1  max= 82792.4
+
+Rank skew (us):
+  mean=  5231.5  stddev=  5468.9
+  p50 =  3711.5  p99   = 21667.8  max= 30174.2
+
+Avg algo bandwidth: 0.22 GB/s
+========================================
+

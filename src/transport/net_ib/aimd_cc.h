@@ -26,6 +26,9 @@
 #define NCCL_CC_LOCAL_FALLBACK_HOLD_NS_ENV "NCCL_CC_LOCAL_FALLBACK_HOLD_NS"
 // v2-minimal：纯 NCCL 内部自闭环窗口控制（见 docs/decisgn2.md §3）
 #define NCCL_CC_V2_MINIMAL_ENV "NCCL_CC_V2_MINIMAL"
+// 消融实验：固定 pacing / channel 上限（与 v2-minimal 互斥；需 NCCL_AIMD_ENABLE=1）
+#define NCCL_CC_ORACLE_PACING_NS_ENV "NCCL_CC_ORACLE_PACING_NS"
+#define NCCL_CC_ORACLE_CHANNELS_ENV "NCCL_CC_ORACLE_CHANNELS"
 // 以下为可调参数（在 aimd_cc.cc 的 GetOrCreateCollectiveCC 中解析），未设置时用默认值：
 //   NCCL_AIMD_MIN_WINDOW       默认 16    [1, 1024]
 //   NCCL_AIMD_MAX_WINDOW       默认 512   [1, 4096]

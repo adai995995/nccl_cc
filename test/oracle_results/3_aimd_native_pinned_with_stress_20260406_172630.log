@@ -1,0 +1,50 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=1.0
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+[AIMD] FinalizeChunkRTT: cc=0x7f879800a3c0 slot=0 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f879800a600 slot=391 inflight_before=1
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f87a8001000 slot=812 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f87a000a440 slot=390 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f87a000a680 slot=769 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f879800a3c0 slot=184 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f87a000a440 slot=710 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f87b4006dc0 slot=331 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f87a000a680 slot=820 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f87a000a440 slot=482 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f879800a3c0 slot=913 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f87a000a680 slot=325 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f87a8001000 slot=808 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f879800a3c0 slot=968 inflight_before=1
+CSV written to: oracle_results/3_aimd_native_pinned_with_stress_20260406_172630.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=1.0
+
+Wall-clock latency (us):
+  mean= 24087.8  stddev= 14286.5
+  p50 = 23949.4  p99   = 67978.4  max= 89270.9
+
+Collective max GPU latency (us):
+  mean= 20693.3  stddev= 12728.1
+  p50 = 19999.7  p99   = 64028.2  max= 79232.0
+
+Rank skew (us):
+  mean=  3297.3  stddev=  3868.1
+  p50 =  1202.2  p99   = 14770.1  max= 23712.8
+
+Avg algo bandwidth: 0.30 GB/s
+========================================
+

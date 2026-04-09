@@ -1,0 +1,36 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=0 NCCL_CC_ORACLE_FACTOR=(unset)
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+warmup done.
+CSV written to: oracle_results/1_baseline_pinned_no_stress_20260409_105214_r2.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=0  NCCL_CC_ORACLE_FACTOR=(unset)
+
+Wall-clock latency (us):
+  mean= 14204.5  stddev=  9629.5
+  p50 = 15904.1  p99   = 39951.2  max= 43168.6
+
+Collective max GPU latency (us):
+  mean= 14186.8  stddev=  9628.3
+  p50 = 15889.9  p99   = 39934.0  max= 43158.5
+
+Rank skew (us):
+  mean=   668.8  stddev=  1826.5
+  p50 =   154.6  p99   =  9359.9  max= 11708.4
+
+Avg algo bandwidth: 0.52 GB/s
+========================================
+

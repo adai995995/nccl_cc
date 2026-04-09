@@ -1,0 +1,75 @@
+============================================
+ Oracle Experiment  Mon Apr  6 03:01:31 PM CST 2026
+ NUM_GPUS=8 ITERS=500 COUNT=1048576
+ STRESS_CORES=8
+============================================
+---- [1_baseline_no_stress] ----
+  CSV: oracle_results/1_baseline_no_stress_20260406_150131.csv
+Wall-clock latency (us):
+  mean=  1966.4  stddev=    69.9
+  p50 =  1956.2  p99   =  2167.8  max=  2292.4
+Collective max GPU latency (us):
+  mean=  1952.7  stddev=    70.1
+  p50 =  1942.5  p99   =  2154.6  max=  2279.4
+Rank skew (us):
+  mean=   135.6  stddev=    58.7
+  p50 =   127.5  p99   =   334.2  max=   462.8
+Avg algo bandwidth: 3.73 GB/s
+
+---- [2_baseline_with_stress] ----
+  CSV: oracle_results/2_baseline_with_stress_20260406_150131.csv
+Wall-clock latency (us):
+  mean=  1985.1  stddev=    73.7
+  p50 =  1978.6  p99   =  2156.6  max=  2845.4
+Collective max GPU latency (us):
+  mean=  1969.8  stddev=    63.1
+  p50 =  1965.1  p99   =  2136.1  max=  2191.4
+Rank skew (us):
+  mean=   150.6  stddev=    62.2
+  p50 =   145.4  p99   =   310.4  max=   373.8
+Avg algo bandwidth: 3.70 GB/s
+
+---- [3_aimd_native_with_stress] ----
+  CSV: oracle_results/3_aimd_native_with_stress_20260406_150131.csv
+Wall-clock latency (us):
+  mean=  1980.6  stddev=    56.4
+  p50 =  1976.2  p99   =  2140.4  max=  2183.7
+Collective max GPU latency (us):
+  mean=  1967.3  stddev=    56.3
+  p50 =  1963.0  p99   =  2128.9  max=  2170.9
+Rank skew (us):
+  mean=   142.5  stddev=    56.2
+  p50 =   135.2  p99   =   304.2  max=   360.4
+Avg algo bandwidth: 3.71 GB/s
+
+---- [4_oracle_half_with_stress] ----
+  CSV: oracle_results/4_oracle_half_with_stress_20260406_150131.csv
+Wall-clock latency (us):
+  mean=  1979.5  stddev=    58.2
+  p50 =  1977.8  p99   =  2142.7  max=  2210.8
+Collective max GPU latency (us):
+  mean=  1966.4  stddev=    58.3
+  p50 =  1965.1  p99   =  2127.1  max=  2217.0
+Rank skew (us):
+  mean=   142.2  stddev=    55.3
+  p50 =   140.3  p99   =   284.7  max=   412.7
+Avg algo bandwidth: 3.71 GB/s
+
+---- [5_oracle_third_with_stress] ----
+  CSV: oracle_results/5_oracle_third_with_stress_20260406_150131.csv
+Wall-clock latency (us):
+  mean=  1979.8  stddev=    65.5
+  p50 =  1970.8  p99   =  2146.8  max=  2253.7
+Collective max GPU latency (us):
+  mean=  1966.5  stddev=    65.5
+  p50 =  1955.8  p99   =  2131.2  max=  2240.5
+Rank skew (us):
+  mean=   137.9  stddev=    53.4
+  p50 =   135.7  p99   =   277.6  max=   318.5
+Avg algo bandwidth: 3.71 GB/s
+
+============================================
+ Experiment Complete
+ Results dir: oracle_results/
+ Summary: oracle_results/summary_20260406_150131.txt
+============================================

@@ -1,0 +1,47 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=0.33
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+[AIMD] FinalizeChunkRTT: cc=0x7f75380659a0 slot=0 inflight_before=1
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f75380659a0 slot=868 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f752c001000 slot=925 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f75380659a0 slot=430 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f7540001000 slot=808 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f752c001000 slot=473 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f75380659a0 slot=964 inflight_before=3
+[AIMD] FinalizeChunkRTT: cc=0x7f7538065be0 slot=905 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f75380659a0 slot=539 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f7528001000 slot=914 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f7534098bc0 slot=882 inflight_before=2
+CSV written to: oracle_results/5_oracle_third_pinned_with_stress_20260406_172630.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=0.33
+
+Wall-clock latency (us):
+  mean= 19112.3  stddev= 14635.4
+  p50 = 15030.3  p99   = 65136.1  max= 67710.6
+
+Collective max GPU latency (us):
+  mean= 18524.6  stddev= 14386.2
+  p50 = 14863.4  p99   = 64139.8  max= 67696.6
+
+Rank skew (us):
+  mean=  4146.1  stddev=  3878.9
+  p50 =  3103.2  p99   = 14895.6  max= 16849.9
+
+Avg algo bandwidth: 0.38 GB/s
+========================================
+

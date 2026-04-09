@@ -1,0 +1,48 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=1.0
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+[AIMD] FinalizeChunkRTT: cc=0x7f8b54001000 slot=0 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f8b48001000 slot=602 inflight_before=7
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f8b50001000 slot=96 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f8b60096110 slot=627 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f8b48001000 slot=66 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f8b54001000 slot=948 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f8b58001000 slot=921 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f8b50001000 slot=314 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f8b54017320 slot=857 inflight_before=3
+[AIMD] FinalizeChunkRTT: cc=0x7f8b48001000 slot=282 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f8b48017320 slot=62 inflight_before=4
+[AIMD] FinalizeChunkRTT: cc=0x7f8b64001000 slot=224 inflight_before=1
+CSV written to: oracle_results/3_aimd_native_pinned_with_stress_20260406_174908.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=1.0
+
+Wall-clock latency (us):
+  mean= 20723.3  stddev= 14158.6
+  p50 = 17526.9  p99   = 67959.6  max= 74404.1
+
+Collective max GPU latency (us):
+  mean= 18792.8  stddev= 13189.8
+  p50 = 15736.3  p99   = 64131.4  max= 74391.6
+
+Rank skew (us):
+  mean=  3632.3  stddev=  4367.2
+  p50 =  1521.7  p99   = 19367.0  max= 22514.7
+
+Avg algo bandwidth: 0.35 GB/s
+========================================
+

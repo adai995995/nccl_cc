@@ -1,0 +1,51 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=0.33
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+[AIMD] FinalizeChunkRTT: cc=0x7f5294001000 slot=0 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f528c001000 slot=351 inflight_before=2
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f527c001000 slot=777 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f527c017320 slot=375 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f528c001000 slot=220 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f5278001000 slot=612 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f5294001000 slot=930 inflight_before=4
+[AIMD] FinalizeChunkRTT: cc=0x7f528c001000 slot=289 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f528c001000 slot=694 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f5290065420 slot=134 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f5278001000 slot=735 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f5294017320 slot=342 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f5294001000 slot=48 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f527c001000 slot=800 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f5294001000 slot=238 inflight_before=1
+CSV written to: oracle_results/5_oracle_third_pinned_with_stress_20260409_111448_r1.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=0.33
+
+Wall-clock latency (us):
+  mean= 25646.0  stddev= 15502.2
+  p50 = 24122.7  p99   = 65943.1  max= 91298.0
+
+Collective max GPU latency (us):
+  mean= 23912.1  stddev= 14561.6
+  p50 = 22478.3  p99   = 62832.8  max= 91284.5
+
+Rank skew (us):
+  mean=  5296.7  stddev=  5784.7
+  p50 =  3583.0  p99   = 22499.7  max= 24245.2
+
+Avg algo bandwidth: 0.29 GB/s
+========================================
+

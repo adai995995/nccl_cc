@@ -1,0 +1,45 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=500 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=0.5
+NCCL version 2.29.2+cuda12.2
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+warmup 50 iters...
+[AIMD] FinalizeChunkRTT: cc=0x7f6f04001000 slot=0 inflight_before=1
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f6f0c067c00 slot=980 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f6f04001000 slot=220 inflight_before=3
+[AIMD] FinalizeChunkRTT: cc=0x7f6ef8065980 slot=907 inflight_before=4
+[AIMD] FinalizeChunkRTT: cc=0x7f6ee8001000 slot=974 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f6efc0659a0 slot=545 inflight_before=4
+[AIMD] FinalizeChunkRTT: cc=0x7f6ee8017320 slot=755 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f6ee8001000 slot=968 inflight_before=1
+CSV written to: oracle_results/4_oracle_half_pinned_with_stress_20260406_170740.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=500
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=0.5
+
+Wall-clock latency (us):
+  mean= 14548.4  stddev= 11057.4
+  p50 = 11338.6  p99   = 51650.2  max= 63984.2
+
+Collective max GPU latency (us):
+  mean= 14087.2  stddev= 10753.4
+  p50 = 10905.1  p99   = 46672.7  max= 63968.3
+
+Rank skew (us):
+  mean=  2863.8  stddev=  3759.2
+  p50 =   879.6  p99   = 14625.7  max= 21911.6
+
+Avg algo bandwidth: 0.50 GB/s
+========================================
+
+[AIMD] FinalizeChunkRTT: cc=0x7f6ef4017320 slot=531 inflight_before=1

@@ -1,0 +1,125 @@
+============================================
+ Oracle Experiment v2  Thu Apr  9 11:32:08 AM CST 2026  (rep=5/5)
+ NUM_GPUS=8 ITERS=500 COUNT=1048576
+ PIN_CPUS=0-3 (4 cores)
+ STRESS workers=8 on same cores=1
+ Total machine cores: 120
+ ORACLE_PACING_NS=5000 ORACLE_CHANNELS_CAP=4
+============================================
+---- [1_baseline_pinned_no_stress] ----
+  CSV: oracle_results/1_baseline_pinned_no_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 14083.8  stddev=  7543.7
+  p50 = 15569.8  p99   = 26349.5  max= 26998.3
+Collective max GPU latency (us):
+  mean= 14061.7  stddev=  7537.1
+  p50 = 15554.6  p99   = 26331.4  max= 26985.5
+Rank skew (us):
+  mean=   393.0  stddev=  1292.0
+  p50 =   145.4  p99   =  8844.0  max= 12104.7
+Avg algo bandwidth: 0.52 GB/s
+
+---- [2_baseline_pinned_with_stress] ----
+  CSV: oracle_results/2_baseline_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 34985.5  stddev= 15288.1
+  p50 = 35297.8  p99   = 68604.6  max= 85814.3
+Collective max GPU latency (us):
+  mean= 31353.4  stddev= 13924.9
+  p50 = 31988.7  p99   = 63963.6  max= 71936.0
+Rank skew (us):
+  mean=  7046.5  stddev=  6916.3
+  p50 =  6831.6  p99   = 24144.9  max= 27289.6
+Avg algo bandwidth: 0.21 GB/s
+
+---- [3_aimd_native_pinned_with_stress] ----
+  CSV: oracle_results/3_aimd_native_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 32463.9  stddev= 15240.7
+  p50 = 31492.1  p99   = 67576.8  max= 93027.2
+Collective max GPU latency (us):
+  mean= 29038.9  stddev= 14521.0
+  p50 = 27553.3  p99   = 63952.4  max= 77257.7
+Rank skew (us):
+  mean=  6121.6  stddev=  5660.5
+  p50 =  4991.5  p99   = 19639.8  max= 25826.3
+Avg algo bandwidth: 0.23 GB/s
+
+---- [4_oracle_half_pinned_with_stress] ----
+  CSV: oracle_results/4_oracle_half_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 25689.0  stddev= 17780.3
+  p50 = 23535.6  p99   = 67956.9  max= 77817.8
+Collective max GPU latency (us):
+  mean= 24688.4  stddev= 17613.2
+  p50 = 22835.7  p99   = 67915.0  max= 68075.5
+Rank skew (us):
+  mean=  4940.5  stddev=  5437.6
+  p50 =  3018.2  p99   = 18892.8  max= 21289.0
+Avg algo bandwidth: 0.29 GB/s
+
+---- [5_oracle_third_pinned_with_stress] ----
+  CSV: oracle_results/5_oracle_third_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 32698.6  stddev= 17264.3
+  p50 = 30607.3  p99   = 71959.3  max= 82624.4
+Collective max GPU latency (us):
+  mean= 31630.3  stddev= 17076.1
+  p50 = 29170.2  p99   = 71943.4  max= 76385.3
+Rank skew (us):
+  mean=  6275.7  stddev=  5652.4
+  p50 =  5951.5  p99   = 21615.2  max= 27285.5
+Avg algo bandwidth: 0.22 GB/s
+
+---- [6_v2_minimal_pinned_with_stress] ----
+  CSV: oracle_results/6_v2_minimal_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 11061.9  stddev= 11698.8
+  p50 =  6087.9  p99   = 45785.4  max= 71042.2
+Collective max GPU latency (us):
+  mean= 10462.9  stddev= 11328.0
+  p50 =  5598.7  p99   = 41778.6  max= 71020.5
+Rank skew (us):
+  mean=   657.5  stddev=  1676.6
+  p50 =   176.1  p99   =  9190.5  max= 14264.3
+Avg algo bandwidth: 0.66 GB/s
+
+---- [7_oracle_pacing_only_pinned_with_stress] ----
+  CSV: oracle_results/7_oracle_pacing_only_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 32908.7  stddev= 17801.8
+  p50 = 31358.4  p99   = 71966.7  max= 79876.8
+Collective max GPU latency (us):
+  mean= 31277.3  stddev= 17882.8
+  p50 = 29232.6  p99   = 71954.0  max= 79849.5
+Rank skew (us):
+  mean=  5876.8  stddev=  5687.8
+  p50 =  4296.7  p99   = 22740.9  max= 26294.3
+Avg algo bandwidth: 0.22 GB/s
+
+---- [8_oracle_channels_only_pinned_with_stress] ----
+  CSV: oracle_results/8_oracle_channels_only_pinned_with_stress_20260409_111448_r5.csv
+  PIN: taskset -c 0-3
+Wall-clock latency (us):
+  mean= 26977.9  stddev= 15049.0
+  p50 = 25059.6  p99   = 64949.0  max= 77647.2
+Collective max GPU latency (us):
+  mean= 25402.9  stddev= 14524.5
+  p50 = 23939.1  p99   = 59976.0  max= 75507.7
+Rank skew (us):
+  mean=  5298.0  stddev=  5426.7
+  p50 =  3743.7  p99   = 19650.6  max= 22961.2
+Avg algo bandwidth: 0.27 GB/s
+
+============================================
+ Experiment Complete
+ Results dir: oracle_results/
+ Summary: oracle_results/run_20260409_111448/summary_20260409_111448_r5.txt
+============================================

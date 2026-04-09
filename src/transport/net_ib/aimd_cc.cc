@@ -54,6 +54,32 @@ static int   g_v2_alpha           = 1;
 static float g_v2_backlog_thresh  = 32.0f;
 static float g_v2_window_floor    = 0.4f;
 
+// 消融：oracle 固定 pacing / channels（控制面每周期写入；与 v2-minimal 互斥）
+static int     g_oracle_fixed_actuator_inited = 0;
+static int     g_oracle_fixed_actuator = 0;
+static uint32_t g_oracle_fixed_pacing_ns = 0;
+static int     g_oracle_fixed_channels = 0;
+
+static void ncclIbOracleFixedActuatorInitOnce(void) {
+    if (g_oracle_fixed_actuator_inited) return;
+    g_oracle_fixed_actuator_inited = 1;
+    const char* pe = getenv(NCCL_CC_ORACLE_PACING_NS_ENV);
+    const char* ce = getenv(NCCL_CC_ORACLE_CHANNELS_ENV);
+    if (pe && pe[0]) {
+        uint64_t v = strtoull(pe, NULL, 10);
+        if (v > 0ULL && v <= 1000000000ULL) g_oracle_fixed_pacing_ns = (uint32_t)v;
+    }
+    if (ce && ce[0]) {
+        int n = atoi(ce);
+        if (n > 0 && n <= 256) g_oracle_fixed_channels = n;
+    }
+    g_oracle_fixed_actuator = (g_oracle_fixed_pacing_ns > 0U || g_oracle_fixed_channels > 0) ? 1 : 0;
+    if (g_oracle_fixed_actuator) {
+        INFO(NCCL_ENV, "Oracle fixed actuator: pacing_ns=%u channels_cap=%d (0=use all QPs)",
+             g_oracle_fixed_pacing_ns, g_oracle_fixed_channels);
+    }
+}
+
 static inline int ncclCcLoadInt(const volatile int* p) {
     return __atomic_load_n(p, __ATOMIC_RELAXED);
 }
@@ -496,6 +522,24 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
                 agg_stretch = stretch;
                 agg_rtt_baseline = base;
                 agg_rtt_ewma = ewma;
+            }
+        }
+
+        // 消融实验：固定 pacing / channel 上限（不缩窗；与 v2-minimal 互斥）
+        ncclIbOracleFixedActuatorInitOnce();
+        if (g_oracle_fixed_actuator && !ncclIbCcV2MinimalEnabled() && ncc > 0) {
+            for (int i = 0; i < ncc; i++) {
+                struct CollectiveCC* cc = local_ccs[i];
+                if (g_oracle_fixed_pacing_ns > 0U) {
+                    ncclCcStoreU32(&cc->effective_pacing_ns, g_oracle_fixed_pacing_ns);
+                } else {
+                    ncclCcStoreU32(&cc->effective_pacing_ns, 0);
+                }
+                if (g_oracle_fixed_channels > 0) {
+                    ncclCcStoreInt(&cc->effective_channels, g_oracle_fixed_channels);
+                } else {
+                    ncclCcStoreInt(&cc->effective_channels, 0);
+                }
             }
         }
 
