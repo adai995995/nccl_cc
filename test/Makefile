@@ -21,7 +21,20 @@ oracle_bench: oracle_bench.cu
 	@test -f $(NCCL_BUILD)/include/nccl.h || (echo "ERROR: $(NCCL_BUILD)/include/nccl.h not found. Build NCCL first: cd .. && ./build_a100.sh src.build" && exit 1)
 	$(NVCC) $(NVCCFLAGS) -o $@ $< $(LDFLAGS)
 
+# ---- Multi-node MPI benchmark (one GPU per rank) ----
+# Build requirements:
+# - OpenMPI (mpicxx/mpirun) installed
+# - nvcc available
+MPICXX ?= mpicxx
+MPI_CFLAGS ?= $(shell $(MPICXX) --showme:compile 2>/dev/null)
+MPI_LDFLAGS ?= $(shell $(MPICXX) --showme:link 2>/dev/null)
+
+oracle_bench_mpi: oracle_bench_mpi.cu
+	@test -f $(NCCL_BUILD)/include/nccl.h || (echo "ERROR: $(NCCL_BUILD)/include/nccl.h not found. Build NCCL first: cd .. && ./build_a100.sh src.build" && exit 1)
+	@command -v $(MPICXX) >/dev/null 2>&1 || (echo "ERROR: $(MPICXX) not found. Install OpenMPI (mpicxx/mpirun)." && exit 1)
+	$(NVCC) $(NVCCFLAGS) $(MPI_CFLAGS) -o $@ $< $(LDFLAGS) $(MPI_LDFLAGS)
+
 clean:
-	rm -f allreduce_test oracle_bench
+	rm -f allreduce_test oracle_bench oracle_bench_mpi
 
 .PHONY: all clean

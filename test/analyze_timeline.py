@@ -173,6 +173,17 @@ def main():
             p(phase_stats(bench_wall[clean2_mask].tolist(), "CLEAN-2"))
             p("")
 
+            if base_t_ms is not None and base_wall is not None and base_stress_intervals:
+                bs0, bs1 = base_stress_intervals[0]
+                bc1 = base_t_ms < bs0
+                bst = (base_t_ms >= bs0) & (base_t_ms <= bs1)
+                bc2 = base_t_ms > bs1
+                p("Baseline (no CC) latency by phase (us):")
+                p(phase_stats(base_wall[bc1].tolist(), "CLEAN-1"))
+                p(phase_stats(base_wall[bst].tolist(), "STRESS "))
+                p(phase_stats(base_wall[bc2].tolist(), "CLEAN-2"))
+                p("")
+
             nccl_clean1 = nccl_t_ms < s_start
             nccl_stress = (nccl_t_ms >= s_start) & (nccl_t_ms <= s_end)
             nccl_clean2 = nccl_t_ms > s_end

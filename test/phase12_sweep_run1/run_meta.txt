@@ -1,0 +1,66 @@
+# run_timeline_experiment.sh — run_meta (auto-generated)
+run_meta_version=1
+script_path=/data/xxl/nccl_cc/test/run_timeline_experiment.sh
+date_iso=2026-04-16T14:57:13+08:00
+hostname=a100-llm-05
+
+[paths]
+outdir=/data/xxl/nccl_cc/test/phase12_sweep_run1
+outdir_basename=phase12_sweep_run1
+git_root=/data/xxl/nccl_cc
+git_rev=e52e88065ef0d15d9e0730ae985decfefe44b978
+git_short=e52e880
+
+[bench / phases]
+NUM_GPUS=8
+ITERS=1000
+WARMUP=50
+COUNT=1048576
+PHASE1_END=300
+PHASE2_END=700
+PIN_CPUS=0-3
+STRESS_WORKERS=8
+
+[build]
+NCCL_BUILD=/data/xxl/nccl_cc/build
+CUDA_HOME=/usr/local/cuda
+LD_LIBRARY_PATH=/data/xxl/nccl_cc/build/lib:/usr/local/cuda/lib64:/export/xxl/nccl_cc/build/lib:/usr/local/cuda-12.2/lib64:/export/xxl/nccl_cc/build/lib:/export/xxl/nccl_cc/build/lib:/data/xxl/nccl_cc/build/lib:/data/xxl/nccl_cc/build/lib:/usr/local/cuda/lib64:/usr/local/cuda/lib64:
+
+[global NCCL / exports before phase A]
+NCCL_P2P_DISABLE=1
+NCCL_SHM_DISABLE=1
+NCCL_SOCKET_IFNAME=lo
+
+---
+status=started (append follows if run completes)
+
+[artifacts timestamp=20260416_145713]
+baseline_latency=/data/xxl/nccl_cc/test/phase12_sweep_run1/baseline_latency_20260416_145713.csv
+baseline_log=/data/xxl/nccl_cc/test/phase12_sweep_run1/baseline_20260416_145713.log
+baseline_events=/data/xxl/nccl_cc/test/phase12_sweep_run1/baseline_events_20260416_145713.csv
+bench_latency=/data/xxl/nccl_cc/test/phase12_sweep_run1/bench_latency_20260416_145713.csv
+bench_log=/data/xxl/nccl_cc/test/phase12_sweep_run1/bench_20260416_145713.log
+events=/data/xxl/nccl_cc/test/phase12_sweep_run1/events_20260416_145713.csv
+nccl_timeline=/data/xxl/nccl_cc/test/phase12_sweep_run1/nccl_timeline_20260416_145713.csv
+
+[phase A — Baseline (no CC) NCCL intent]
+NCCL_AIMD_ENABLE=0
+NCCL_CC_V2_MINIMAL=(unset)
+NCCL_CC_V2_TIMELINE_FILE=(unset)
+NCCL_DEBUG=WARN
+CSV_OUTPUT=baseline_latency_20260416_145713.csv
+
+[phase B — v2-minimal NCCL intent]
+NCCL_AIMD_ENABLE=1
+NCCL_CC_EPOCH_ENABLE=1
+NCCL_CC_V2_MINIMAL=1
+NCCL_CC_V2_TIMELINE_FILE=nccl_timeline_20260416_145713.csv
+NCCL_DEBUG=INFO
+NCCL_DEBUG_SUBSYS=NET
+CSV_OUTPUT=bench_latency_20260416_145713.csv
+
+[stress-ng]
+cmd=taskset -c 0-3 stress-ng --cpu 8 --timeout 300s
+
+status=completed
+date_iso_end=2026-04-16T15:07:37+08:00

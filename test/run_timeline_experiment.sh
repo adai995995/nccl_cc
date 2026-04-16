@@ -44,6 +44,90 @@ export NCCL_SHM_DISABLE=1
 export NCCL_SOCKET_IFNAME=lo
 export NUM_GPUS ITERS WARMUP COUNT
 
+# 阶段 0：可审计元数据（跑前写入；跑完再追加产物与 A/B 段 NCCL）
+OUTDIR_ABS="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUTDIR")"
+GIT_ROOT="$(cd .. && pwd)"
+GIT_REV="$(git -C "$GIT_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")"
+GIT_SHORT="$(git -C "$GIT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+
+write_run_meta_start() {
+    local meta="${OUTDIR_ABS}/run_meta.txt"
+    {
+        echo "# run_timeline_experiment.sh — run_meta (auto-generated)"
+        echo "run_meta_version=1"
+        echo "script_path=$(readlink -f "${BASH_SOURCE[0]}")"
+        echo "date_iso=$(date -Is 2>/dev/null || date)"
+        echo "hostname=$(hostname)"
+        echo ""
+        echo "[paths]"
+        echo "outdir=${OUTDIR_ABS}"
+        echo "outdir_basename=$(basename "${OUTDIR_ABS}")"
+        echo "git_root=${GIT_ROOT}"
+        echo "git_rev=${GIT_REV}"
+        echo "git_short=${GIT_SHORT}"
+        echo ""
+        echo "[bench / phases]"
+        echo "NUM_GPUS=${NUM_GPUS}"
+        echo "ITERS=${ITERS}"
+        echo "WARMUP=${WARMUP}"
+        echo "COUNT=${COUNT}"
+        echo "PHASE1_END=${PHASE1_END}"
+        echo "PHASE2_END=${PHASE2_END}"
+        echo "PIN_CPUS=${PIN_CPUS}"
+        echo "STRESS_WORKERS=${STRESS_WORKERS}"
+        echo ""
+        echo "[build]"
+        echo "NCCL_BUILD=${NCCL_BUILD}"
+        echo "CUDA_HOME=${CUDA_HOME}"
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+        echo ""
+        echo "[global NCCL / exports before phase A]"
+        env | LC_ALL=C sort | grep -E '^NCCL_' || true
+        echo ""
+        echo "---"
+        echo "status=started (append follows if run completes)"
+    } > "${meta}"
+}
+
+write_run_meta_end() {
+    local meta="${OUTDIR_ABS}/run_meta.txt"
+    {
+        echo ""
+        echo "[artifacts timestamp=${TIMESTAMP}]"
+        echo "baseline_latency=${OUTDIR_ABS}/baseline_latency_${TIMESTAMP}.csv"
+        echo "baseline_log=${OUTDIR_ABS}/baseline_${TIMESTAMP}.log"
+        echo "baseline_events=${OUTDIR_ABS}/baseline_events_${TIMESTAMP}.csv"
+        echo "bench_latency=${OUTDIR_ABS}/bench_latency_${TIMESTAMP}.csv"
+        echo "bench_log=${OUTDIR_ABS}/bench_${TIMESTAMP}.log"
+        echo "events=${OUTDIR_ABS}/events_${TIMESTAMP}.csv"
+        echo "nccl_timeline=${OUTDIR_ABS}/nccl_timeline_${TIMESTAMP}.csv"
+        echo ""
+        echo "[phase A — Baseline (no CC) NCCL intent]"
+        echo "NCCL_AIMD_ENABLE=0"
+        echo "NCCL_CC_V2_MINIMAL=(unset)"
+        echo "NCCL_CC_V2_TIMELINE_FILE=(unset)"
+        echo "NCCL_DEBUG=WARN"
+        echo "CSV_OUTPUT=baseline_latency_${TIMESTAMP}.csv"
+        echo ""
+        echo "[phase B — v2-minimal NCCL intent]"
+        echo "NCCL_AIMD_ENABLE=1"
+        echo "NCCL_CC_EPOCH_ENABLE=1"
+        echo "NCCL_CC_V2_MINIMAL=1"
+        echo "NCCL_CC_V2_TIMELINE_FILE=nccl_timeline_${TIMESTAMP}.csv"
+        echo "NCCL_DEBUG=INFO"
+        echo "NCCL_DEBUG_SUBSYS=NET"
+        echo "CSV_OUTPUT=bench_latency_${TIMESTAMP}.csv"
+        echo ""
+        echo "[stress-ng]"
+        echo "cmd=taskset -c ${PIN_CPUS} stress-ng --cpu ${STRESS_WORKERS} --timeout 300s"
+        echo ""
+        echo "status=completed"
+        echo "date_iso_end=$(date -Is 2>/dev/null || date)"
+    } >> "${meta}"
+}
+
+write_run_meta_start
+
 get_ts_us() {
     python3 -c "import time; print(int(time.monotonic() * 1e6))"
 }
@@ -167,6 +251,8 @@ STRESS_PID=""
 echo "  Waiting for benchmark to finish..."
 wait "$BENCH_PID" 2>/dev/null || true
 echo "  [B] v2-minimal done."
+
+write_run_meta_end
 
 unset NCCL_CC_V2_MINIMAL
 unset NCCL_CC_V2_TIMELINE_FILE

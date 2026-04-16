@@ -42,17 +42,18 @@ static uint64_t g_cc_external_snapshot_ttl_ns = 20000000ULL; // 默认 20ms
 static int g_aimd_recovery_only = -1; // 1=仅恢复态允许本地 AIMD 回退
 static uint64_t g_cc_local_fallback_hold_ns = 50000000ULL; // 默认 50ms
 
-// v2-minimal 全局参数
+// v2-minimal 全局参数（detector v2：降低 clean 段误触、加快恢复；仍可用环境变量覆盖）
 static FILE* g_v2_timeline_fp = NULL;
 static int   g_cc_v2_minimal = -1;
-static float g_v2_pressure_thresh = 0.50f;
-static float g_v2_exit_thresh     = 0.20f;
-static int   g_v2_enter_epochs    = 10;
-static int   g_v2_exit_epochs     = 20;
+static float g_v2_pressure_thresh = 0.58f;  // 进入高压带：默认略提高，减少无 stress 时 SHRINK
+static float g_v2_exit_thresh     = 0.30f;  // 低压带：略放宽，便于累积 low_cnt、出现 RECOVER
+static int   g_v2_enter_epochs    = 14;     // 需更持续高压才进入 SHRINK
+static int   g_v2_exit_epochs     = 14;       // 低压持续更少周期即可恢复（原 20 偏慢）
 static float g_v2_beta            = 0.7f;
 static int   g_v2_alpha           = 1;
 static float g_v2_backlog_thresh  = 32.0f;
 static float g_v2_window_floor    = 0.4f;
+static int   g_v2_middle_high_decay = 1;      // 中间带每周期衰减 high_cnt，避免尖峰快速锁死 SHRINK
 
 // 消融：oracle 固定 pacing / channels（控制面每周期写入；与 v2-minimal 互斥）
 static int     g_oracle_fixed_actuator_inited = 0;
@@ -162,9 +163,15 @@ int ncclIbCcV2MinimalEnabled(void) {
             v = getenv("NCCL_CC_V2_ALPHA");            if (v) { int n = atoi(v); if (n >= 1 && n <= 100) g_v2_alpha = n; }
             v = getenv("NCCL_CC_V2_BACKLOG_THRESH");   if (v) { float f = (float)atof(v); if (f > 0.f) g_v2_backlog_thresh = f; }
             v = getenv("NCCL_CC_V2_WINDOW_FLOOR");     if (v) { float f = (float)atof(v); if (f > 0.f && f <= 1.f) g_v2_window_floor = f; }
-            INFO(NCCL_ENV, "V2-minimal enabled: pressure_thresh=%.2f exit_thresh=%.2f enter=%d exit=%d beta=%.2f alpha=%d backlog_thresh=%.0f window_floor=%.2f",
+            v = getenv("NCCL_CC_V2_MIDDLE_HIGH_DECAY"); if (v) { g_v2_middle_high_decay = (atoi(v) > 0) ? 1 : 0; }
+            if (g_v2_exit_thresh >= g_v2_pressure_thresh) {
+                WARN("V2-minimal: exit_thresh >= pressure_thresh; clamping exit to pressure - 0.05");
+                g_v2_exit_thresh = g_v2_pressure_thresh - 0.05f;
+                if (g_v2_exit_thresh < 0.0f) g_v2_exit_thresh = 0.0f;
+            }
+            INFO(NCCL_ENV, "V2-minimal enabled: pressure_thresh=%.2f exit_thresh=%.2f enter=%d exit=%d beta=%.2f alpha=%d backlog_thresh=%.0f window_floor=%.2f middle_high_decay=%d",
                  g_v2_pressure_thresh, g_v2_exit_thresh, g_v2_enter_epochs, g_v2_exit_epochs,
-                 g_v2_beta, g_v2_alpha, g_v2_backlog_thresh, g_v2_window_floor);
+                 g_v2_beta, g_v2_alpha, g_v2_backlog_thresh, g_v2_window_floor, g_v2_middle_high_decay);
 
             const char* tl = getenv("NCCL_CC_V2_TIMELINE_FILE");
             if (tl && tl[0]) {
@@ -610,7 +617,10 @@ static void* ncclCcControlPlaneThreadMain(void* arg) {
                 v2_low_count++;
                 v2_high_count = 0;
             } else {
-                // 中间区域：不改变计数器，维持当前状态
+                // 中间区域 (exit_thresh, pressure_thresh)：默认每周期衰减 high_cnt，避免短时偏差反复累积成 SHRINK
+                if (g_v2_middle_high_decay && v2_high_count > 0) {
+                    v2_high_count--;
+                }
             }
 
             int v2_should_shrink  = (v2_high_count >= g_v2_enter_epochs);

@@ -1,0 +1,27 @@
+============================================================
+Phase V3 Timeline Statistics
+============================================================
+NCCL timeline records: 21554
+Bench iterations:      1000
+Duration:              23.1s
+
+v2-minimal latency by phase (us):
+  CLEAN-1: n=308  mean=16552.6  p50=17670.7  p99=39969.5  max=43982.8  stddev=9170.1
+  STRESS : n=415  mean=22014.7  p50=21696.0  p99=60201.2  max=67428.3  stddev=13321.9
+  CLEAN-2: n=277  mean=20575.5  p50=17996.0  p99=56789.0  max=71953.8  stddev=12071.5
+
+Baseline (no CC) latency by phase (us):
+  CLEAN-1: n=341  mean=18021.8  p50=18113.5  p99=30932.5  max=34973.6  stddev=6922.4
+  STRESS : n=367  mean=28714.5  p50=28127.8  p99=61234.9  max=63893.4  stddev=12917.5
+  CLEAN-2: n=292  mean=31762.6  p50=30100.3  p99=74688.8  max=91870.2  stddev=14920.6
+
+NCCL controller by phase:
+  CLEAN-1: pressure mean=0.780 max=1.000  window mean=165 min=-1  SHRINK=77.9%
+  STRESS: pressure mean=1.000 max=1.000  window mean=204 min=204  SHRINK=100.0%
+  CLEAN-2: pressure mean=0.992 max=1.000  window mean=204 min=204  SHRINK=99.5%
+
+Control reaction latency: 0.6ms (from stress_start to first SHRINK)
+
+Recovery latency: 5887.8ms (from stress_stop to first RECOVER)
+
+============================================================

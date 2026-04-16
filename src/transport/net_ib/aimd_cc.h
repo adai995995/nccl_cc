@@ -26,6 +26,13 @@
 #define NCCL_CC_LOCAL_FALLBACK_HOLD_NS_ENV "NCCL_CC_LOCAL_FALLBACK_HOLD_NS"
 // v2-minimal：纯 NCCL 内部自闭环窗口控制（见 docs/decisgn2.md §3）
 #define NCCL_CC_V2_MINIMAL_ENV "NCCL_CC_V2_MINIMAL"
+// v2-minimal 检测器可调（aimd_cc.cc 默认值已调低误触、加快恢复；均可覆盖）：
+//   NCCL_CC_V2_PRESSURE_THRESH   进入高压带阈值 [0,1]，默认 0.58
+//   NCCL_CC_V2_EXIT_THRESH       低压带阈值 [0,1]，须 < PRESSURE_THRESH，默认 0.30
+//   NCCL_CC_V2_ENTER_EPOCHS      连续高压周期数才 SHRINK，默认 14
+//   NCCL_CC_V2_EXIT_EPOCHS       连续低压周期数才 RECOVER，默认 14
+//   NCCL_CC_V2_MIDDLE_HIGH_DECAY 中间带是否每周期衰减 high_cnt，默认 1；设 0 关闭（恢复旧行为）
+//   NCCL_CC_V2_BETA / V2_ALPHA / V2_BACKLOG_THRESH / V2_WINDOW_FLOOR 等见 aimd_cc.cc
 // 消融实验：固定 pacing / channel 上限（与 v2-minimal 互斥；需 NCCL_AIMD_ENABLE=1）
 #define NCCL_CC_ORACLE_PACING_NS_ENV "NCCL_CC_ORACLE_PACING_NS"
 #define NCCL_CC_ORACLE_CHANNELS_ENV "NCCL_CC_ORACLE_CHANNELS"

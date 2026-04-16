@@ -1,0 +1,670 @@
+oracle_bench: nDev=8 count=1048576 (4.19 MB) iters=1000 warmup=50
+NCCL env: NCCL_AIMD_ENABLE=1 NCCL_CC_ORACLE_FACTOR=(unset)
+a100-llm-05:3925727:3925727 [0] NCCL INFO NCCL_SOCKET_IFNAME set to lo
+a100-llm-05:3925727:3925727 [0] NCCL INFO NCCL version 2.29.2+cuda12.6
+a100-llm-05:3925727:3925727 [0] NCCL INFO NCCL git version main e52e880-dirty
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/Plugin: Could not find: libnccl-net.so
+a100-llm-05:3925727:3925811 [6] NCCL INFO dlvsym failed on mlx5dv_get_data_direct_sysfs_path - /lib/x86_64-linux-gnu/libmlx5.so: undefined symbol: mlx5dv_get_data_direct_sysfs_path, version MLX5_1.25 version MLX5_1.25
+a100-llm-05:3925727:3925811 [6] NCCL INFO dlvsym failed on mlx5dv_reg_dmabuf_mr - /lib/x86_64-linux-gnu/libmlx5.so: undefined symbol: mlx5dv_reg_dmabuf_mr, version MLX5_1.25 version MLX5_1.25
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [0] mlx5_0:uverbs0:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef1f4740 pciPath=/sys/devices/pci0000:00/0000:00:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [0] name=mlx5_0 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [1] mlx5_1:uverbs1:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef236660 pciPath=/sys/devices/pci0000:f8/0000:f8:00.0/0000:f9:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [1] name=mlx5_1 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [2] mlx5_2:uverbs2:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef2781d0 pciPath=/sys/devices/pci0000:f8/0000:f8:00.0/0000:f9:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [2] name=mlx5_2 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [3] mlx5_3:uverbs3:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef2b9d90 pciPath=/sys/devices/pci0000:fa/0000:fa:00.0/0000:fb:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [3] name=mlx5_3 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [4] mlx5_4:uverbs4:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef2fb980 pciPath=/sys/devices/pci0000:fa/0000:fa:00.0/0000:fb:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [4] name=mlx5_4 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [5] mlx5_5:uverbs5:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef33d550 pciPath=/sys/devices/pci0000:fc/0000:fc:00.0/0000:fd:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [5] name=mlx5_5 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [6] mlx5_6:uverbs6:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef37f120 pciPath=/sys/devices/pci0000:fc/0000:fc:00.0/0000:fd:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [6] name=mlx5_6 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [7] mlx5_7:uverbs7:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef3c0cf0 pciPath=/sys/devices/pci0000:fe/0000:fe:00.0/0000:ff:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [7] name=mlx5_7 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB: [8] mlx5_8:uverbs8:1/RoCE provider=Mlx5 speed=100000 context=0x7f9bef4028c0 pciPath=/sys/devices/pci0000:fe/0000:fe:00.0/0000:ff:00.0 ar=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Made virtual device [8] name=mlx5_8 speed=100000 ndevs=1
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : Using [0]mlx5_0:1/RoCE [1]mlx5_1:1/RoCE [2]mlx5_2:1/RoCE [3]mlx5_3:1/RoCE [4]mlx5_4:1/RoCE [5]mlx5_5:1/RoCE [6]mlx5_6:1/RoCE [7]mlx5_7:1/RoCE [8]mlx5_8:1/RoCE [RO]; OOB lo:127.0.0.1<0>
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925811 [6] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925832 [0] NCCL INFO V2MIN: pressure=0.000 (fast=0.000 slow=0.000 dev=0.0000) state=HOLD window=-1 floor=0 high=0 low=1 ncc=0
+a100-llm-05:3925727:3925811 [6] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925811 [6] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925811 [6] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925808 [3] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925808 [3] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925808 [3] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925808 [3] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925809 [4] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925809 [4] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925809 [4] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925809 [4] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925806 [1] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925806 [1] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925806 [1] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925806 [1] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925812 [7] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925812 [7] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925812 [7] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925812 [7] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925805 [0] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925805 [0] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925805 [0] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925805 [0] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925807 [2] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925807 [2] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925807 [2] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925807 [2] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+[AIMD] AIMD build (release, no -DAIMD_DEBUG)
+a100-llm-05:3925727:3925810 [5] NCCL INFO Initialized NET plugin IB
+a100-llm-05:3925727:3925810 [5] NCCL INFO Assigned NET plugin IB to comm
+a100-llm-05:3925727:3925810 [5] NCCL INFO Assigned GIN plugin GIN_IB_GDAKI to comm
+a100-llm-05:3925727:3925810 [5] NCCL INFO Assigned RMA plugin GIN_IB_PROXY to comm
+a100-llm-05:3925727:3925810 [5] NCCL INFO NCCL_P2P_DISABLE set by environment to 1
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : Made virtual device [9] name=mlx5_1+mlx5_2 speed=200000 ndevs=2
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : Made virtual device [10] name=mlx5_3+mlx5_4 speed=200000 ndevs=2
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : Made virtual device [11] name=mlx5_5+mlx5_6 speed=200000 ndevs=2
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : Made virtual device [12] name=mlx5_7+mlx5_8 speed=200000 ndevs=2
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925810 [5] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925812 [7] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925809 [4] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925807 [2] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925808 [3] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925806 [1] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925811 [6] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'mlx5_0'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'mlx5_1'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 2 'mlx5_2'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 3 'mlx5_3'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 4 'mlx5_4'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 5 'mlx5_5'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 6 'mlx5_6'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 7 'mlx5_7'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 8 'mlx5_8'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 9 'mlx5_1+mlx5_2'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 10 'mlx5_3+mlx5_4'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 11 'mlx5_5+mlx5_6'
+a100-llm-05:3925727:3925805 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 12 'mlx5_7+mlx5_8'
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925811 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925809 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925810 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925812 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925807 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925805 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-5 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-3 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-4 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925808 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-6 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-7 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-8 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-1 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-2 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925806 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+warmup 50 iters...
+a100-llm-05:3925727:3925857 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925858 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925859 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925863 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925861 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925864 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925862 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925860 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925848 [3] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925843 [6] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925861 [3] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab8000d10
+a100-llm-05:3925727:3925858 [6] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ad4000d10
+a100-llm-05:3925727:3925861 [3] NCCL INFO Channel 00/0 : 2[2] -> 3[3] [receive] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925861 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925848 [3] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925861 [3] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab8000d88
+a100-llm-05:3925727:3925861 [3] NCCL INFO Channel 01/0 : 2[2] -> 3[3] [receive] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925861 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925848 [3] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925861 [3] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab8000e00
+a100-llm-05:3925727:3925861 [3] NCCL INFO Channel 00/0 : 3[3] -> 4[4] [send] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925861 [3] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028192 (rank 3) - NET/0-10 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925848 [3] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925861 [3] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab8000e78
+a100-llm-05:3925727:3925861 [3] NCCL INFO Channel 01/0 : 3[3] -> 4[4] [send] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925849 [1] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925840 [0] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925864 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b14000d10
+a100-llm-05:3925727:3925864 [0] NCCL INFO Channel 00/0 : 7[7] -> 0[0] [receive] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925864 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925851 [2] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925840 [0] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925864 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b14000d88
+a100-llm-05:3925727:3925864 [0] NCCL INFO Channel 01/0 : 7[7] -> 0[0] [receive] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925864 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925840 [0] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925864 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b14000e00
+a100-llm-05:3925727:3925864 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[1] [send] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925864 [0] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1019984 (rank 0) - NET/0-9 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925840 [0] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925864 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b14000e78
+a100-llm-05:3925727:3925864 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[1] [send] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925863 [1] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9acc000d10
+a100-llm-05:3925727:3925863 [1] NCCL INFO Channel 00/0 : 0[0] -> 1[1] [receive] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925863 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925849 [1] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925863 [1] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9acc000d88
+a100-llm-05:3925727:3925863 [1] NCCL INFO Channel 01/0 : 0[0] -> 1[1] [receive] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925863 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925849 [1] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925863 [1] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9acc000e00
+a100-llm-05:3925727:3925863 [1] NCCL INFO Channel 00/0 : 1[1] -> 2[2] [send] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925863 [1] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1020000 (rank 1) - NET/0-9 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925849 [1] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925863 [1] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9acc000e78
+a100-llm-05:3925727:3925863 [1] NCCL INFO Channel 01/0 : 1[1] -> 2[2] [send] via NET/IB/9/GDRDMA
+a100-llm-05:3925727:3925858 [6] NCCL INFO Channel 00/0 : 5[5] -> 6[6] [receive] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925858 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925847 [4] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925860 [4] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9bef466a30
+a100-llm-05:3925727:3925845 [7] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925855 [5] NCCL INFO New proxy recv connection 0 from local rank 0, transport 2
+a100-llm-05:3925727:3925859 [5] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab4009e10
+a100-llm-05:3925727:3925857 [7] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b00c593e0
+a100-llm-05:3925727:3925859 [5] NCCL INFO Channel 00/0 : 4[4] -> 5[5] [receive] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925859 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925855 [5] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925859 [5] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab4009e88
+a100-llm-05:3925727:3925859 [5] NCCL INFO Channel 01/0 : 4[4] -> 5[5] [receive] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925859 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925855 [5] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925859 [5] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab4009f00
+a100-llm-05:3925727:3925859 [5] NCCL INFO Channel 00/0 : 5[5] -> 6[6] [send] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925859 [5] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036384 (rank 5) - NET/0-11 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925855 [5] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925859 [5] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ab4009f78
+a100-llm-05:3925727:3925859 [5] NCCL INFO Channel 01/0 : 5[5] -> 6[6] [send] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925860 [4] NCCL INFO Channel 00/0 : 3[3] -> 4[4] [receive] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925860 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925847 [4] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925860 [4] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9bef466aa8
+a100-llm-05:3925727:3925860 [4] NCCL INFO Channel 01/0 : 3[3] -> 4[4] [receive] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925860 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925847 [4] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925860 [4] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9bef466b20
+a100-llm-05:3925727:3925860 [4] NCCL INFO Channel 00/0 : 4[4] -> 5[5] [send] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925860 [4] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1036368 (rank 4) - NET/0-11 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925847 [4] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925860 [4] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9bef466b98
+a100-llm-05:3925727:3925860 [4] NCCL INFO Channel 01/0 : 4[4] -> 5[5] [send] via NET/IB/11/GDRDMA
+a100-llm-05:3925727:3925862 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ac0000d10
+a100-llm-05:3925727:3925857 [7] NCCL INFO Channel 00/0 : 6[6] -> 7[7] [receive] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925857 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925843 [6] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925845 [7] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925857 [7] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b00c59458
+a100-llm-05:3925727:3925862 [2] NCCL INFO Channel 00/0 : 1[1] -> 2[2] [receive] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925862 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 0, mode Default)
+a100-llm-05:3925727:3925851 [2] NCCL INFO New proxy recv connection 1 from local rank 0, transport 2
+a100-llm-05:3925727:3925862 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ac0000d88
+a100-llm-05:3925727:3925862 [2] NCCL INFO Channel 01/0 : 1[1] -> 2[2] [receive] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925862 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925851 [2] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925862 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ac0000e00
+a100-llm-05:3925727:3925862 [2] NCCL INFO Channel 00/0 : 2[2] -> 3[3] [send] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925862 [2] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1028176 (rank 2) - NET/0-10 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925851 [2] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925862 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ac0000e78
+a100-llm-05:3925727:3925862 [2] NCCL INFO Channel 01/0 : 2[2] -> 3[3] [send] via NET/IB/10/GDRDMA
+a100-llm-05:3925727:3925858 [6] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ad4000d88
+a100-llm-05:3925727:3925858 [6] NCCL INFO Channel 01/0 : 5[5] -> 6[6] [receive] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925858 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925843 [6] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925858 [6] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ad4000e00
+a100-llm-05:3925727:3925857 [7] NCCL INFO Channel 01/0 : 6[6] -> 7[7] [receive] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925857 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925845 [7] NCCL INFO New proxy send connection 2 from local rank 0, transport 2
+a100-llm-05:3925727:3925857 [7] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b00c594d0
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: NCCL Dev 9 IbDev 1 Port 1 qpn 1060 mtu 5 GID 3 (0/F34413C6FFFF0000) ctsFifoRkey=0x17fffe ctsFifoLkey=0x17fffe
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1060 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: NCCL Dev 9 IbDev 2 Port 1 qpn 804 mtu 5 GID 3 (0/173F13C6FFFF0000) ctsFifoRkey=0x1411d0 ctsFifoLkey=0x1411d0
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 804 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925857 [7] NCCL INFO Channel 00/0 : 7[7] -> 0[0] [send] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925857 [7] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044576 (rank 7) - NET/0-12 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925845 [7] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925857 [7] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9b00c59548
+a100-llm-05:3925727:3925857 [7] NCCL INFO Channel 01/0 : 7[7] -> 0[0] [send] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: NCCL Dev 9 IbDev 1 Port 1 qpn 1061 mtu 5 GID 3 (0/F34413C6FFFF0000) ctsFifoRkey=0x180b0a ctsFifoLkey=0x180b0a
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1061 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: NCCL Dev 9 IbDev 2 Port 1 qpn 805 mtu 5 GID 3 (0/173F13C6FFFF0000) ctsFifoRkey=0x141ddc ctsFifoLkey=0x141ddc
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 805 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925858 [6] NCCL INFO Channel 00/0 : 6[6] -> 7[7] [send] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925858 [6] NCCL INFO GPU Direct RDMA Enabled for GPU/0-1044560 (rank 6) - NET/0-12 (distance 5 <= 6, read 1, mode Default)
+a100-llm-05:3925727:3925843 [6] NCCL INFO New proxy send connection 3 from local rank 0, transport 2
+a100-llm-05:3925727:3925858 [6] NCCL INFO Connected to proxy localRank 0 -> connection 0x7f9ad4000e78
+a100-llm-05:3925727:3925858 [6] NCCL INFO Channel 01/0 : 6[6] -> 7[7] [send] via NET/IB/12/GDRDMA
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: NCCL Dev 9 IbDev 1 Port 1 qpn 1062 mtu 5 GID 3 (0/F34413C6FFFF0000) ctsFifoRkey=0x181716 ctsFifoLkey=0x181716
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1062 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: NCCL Dev 9 IbDev 2 Port 1 qpn 806 mtu 5 GID 3 (0/173F13C6FFFF0000) ctsFifoRkey=0x142ae9 ctsFifoLkey=0x142ae9
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 806 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: NCCL Dev 12 IbDev 7 Port 1 qpn 1060 mtu 5 GID 3 (0/4E5A13C6FFFF0000) ctsFifoRkey=0x177573 ctsFifoLkey=0x177573
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1060 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: NCCL Dev 12 IbDev 8 Port 1 qpn 804 mtu 5 GID 3 (0/57B013C6FFFF0000) ctsFifoRkey=0x13f6b5 ctsFifoLkey=0x13f6b5
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 804 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: NCCL Dev 12 IbDev 7 Port 1 qpn 1061 mtu 5 GID 3 (0/4E5A13C6FFFF0000) ctsFifoRkey=0x178280 ctsFifoLkey=0x178280
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1061 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: NCCL Dev 12 IbDev 8 Port 1 qpn 805 mtu 5 GID 3 (0/57B013C6FFFF0000) ctsFifoRkey=0x1406c1 ctsFifoLkey=0x1406c1
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 805 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1060 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 804 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: NCCL Dev 12 IbDev 7 Port 1 qpn 1062 mtu 5 GID 3 (0/4E5A13C6FFFF0000) ctsFifoRkey=0x178e8d ctsFifoLkey=0x178e8d
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1062 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: NCCL Dev 11 IbDev 5 Port 1 qpn 1060 mtu 5 GID 3 (0/520113C6FFFF0000) ctsFifoRkey=0x17f2f2 ctsFifoLkey=0x17f2f2
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1060 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: NCCL Dev 12 IbDev 8 Port 1 qpn 806 mtu 5 GID 3 (0/57B013C6FFFF0000) ctsFifoRkey=0x1412d2 ctsFifoLkey=0x1412d2
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 806 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: NCCL Dev 11 IbDev 6 Port 1 qpn 804 mtu 5 GID 3 (0/B90713C6FFFF0000) ctsFifoRkey=0x142cec ctsFifoLkey=0x142cec
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 804 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: NCCL Dev 10 IbDev 3 Port 1 qpn 1062 mtu 5 GID 3 (0/220D13C6FFFF0000) ctsFifoRkey=0x17e0de ctsFifoLkey=0x17e0de
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1062 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: NCCL Dev 10 IbDev 4 Port 1 qpn 806 mtu 5 GID 3 (0/422613C6FFFF0000) ctsFifoRkey=0x148244 ctsFifoLkey=0x148244
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 806 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: NCCL Dev 10 IbDev 3 Port 1 qpn 1063 mtu 5 GID 3 (0/220D13C6FFFF0000) ctsFifoRkey=0x17eded ctsFifoLkey=0x17eded
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1063 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: NCCL Dev 11 IbDev 5 Port 1 qpn 1062 mtu 5 GID 3 (0/520113C6FFFF0000) ctsFifoRkey=0x17fefd ctsFifoLkey=0x17fefd
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1062 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: NCCL Dev 10 IbDev 4 Port 1 qpn 807 mtu 5 GID 3 (0/422613C6FFFF0000) ctsFifoRkey=0x14904d ctsFifoLkey=0x14904d
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 807 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: NCCL Dev 11 IbDev 6 Port 1 qpn 805 mtu 5 GID 3 (0/B90713C6FFFF0000) ctsFifoRkey=0x1437f7 ctsFifoLkey=0x1437f7
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 805 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: NCCL Dev 9 IbDev 1 Port 1 qpn 1067 mtu 5 GID 3 (0/F34413C6FFFF0000) ctsFifoRkey=0x183a39 ctsFifoLkey=0x183a39
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1067 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: NCCL Dev 9 IbDev 2 Port 1 qpn 811 mtu 5 GID 3 (0/173F13C6FFFF0000) ctsFifoRkey=0x144e0d ctsFifoLkey=0x144e0d
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 811 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: NCCL Dev 11 IbDev 5 Port 1 qpn 1061 mtu 5 GID 3 (0/520113C6FFFF0000) ctsFifoRkey=0x180a09 ctsFifoLkey=0x180a09
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1061 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1062 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: NCCL Dev 11 IbDev 6 Port 1 qpn 806 mtu 5 GID 3 (0/B90713C6FFFF0000) ctsFifoRkey=0x144302 ctsFifoLkey=0x144302
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 806 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 806 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: NCCL Dev 10 IbDev 3 Port 1 qpn 1067 mtu 5 GID 3 (0/220D13C6FFFF0000) ctsFifoRkey=0x180a09 ctsFifoLkey=0x180a09
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1067 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: NCCL Dev 10 IbDev 4 Port 1 qpn 811 mtu 5 GID 3 (0/422613C6FFFF0000) ctsFifoRkey=0x14b775 ctsFifoLkey=0x14b775
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 811 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1062 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 806 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: NCCL Dev 11 IbDev 5 Port 1 qpn 1067 mtu 5 GID 3 (0/520113C6FFFF0000) ctsFifoRkey=0x182e2d ctsFifoLkey=0x182e2d
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1067 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: NCCL Dev 11 IbDev 6 Port 1 qpn 810 mtu 5 GID 3 (0/B90713C6FFFF0000) ctsFifoRkey=0x146625 ctsFifoLkey=0x146625
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 810 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: NCCL Dev 12 IbDev 7 Port 1 qpn 1066 mtu 5 GID 3 (0/4E5A13C6FFFF0000) ctsFifoRkey=0x17b0af ctsFifoLkey=0x17b0af
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1066 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: NCCL Dev 12 IbDev 8 Port 1 qpn 809 mtu 5 GID 3 (0/57B013C6FFFF0000) ctsFifoRkey=0x1436f5 ctsFifoLkey=0x1436f5
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 809 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1067 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1060 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925851 [2] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 811 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 804 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1061 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 806 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1061 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: NCCL Dev 10 IbDev 3 Port 1 qpn 1071 mtu 5 GID 3 (0/220D13C6FFFF0000) ctsFifoRkey=0x182220 ctsFifoLkey=0x182220
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1071 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 805 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: NCCL Dev 10 IbDev 4 Port 1 qpn 815 mtu 5 GID 3 (0/422613C6FFFF0000) ctsFifoRkey=0x14cc8f ctsFifoLkey=0x14cc8f
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 815 query_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1062 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1060 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925847 [4] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 805 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 804 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1067 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925840 [0] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 811 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 5 Port 1 qpn 1067 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925855 [5] NCCL INFO NET/IB: IbDev 6 Port 1 qpn 810 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 1 Port 1 qpn 1061 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925849 [1] NCCL INFO NET/IB: IbDev 2 Port 1 qpn 805 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1062 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925843 [6] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 806 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 7 Port 1 qpn 1066 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925845 [7] NCCL INFO NET/IB: IbDev 8 Port 1 qpn 809 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1063 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 807 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 3 Port 1 qpn 1071 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+a100-llm-05:3925727:3925848 [3] NCCL INFO NET/IB: IbDev 4 Port 1 qpn 815 set_ece={supported=1, vendor_id=0x15b3, options=0x30000000, comp_mask=0x0}
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac8001000 slot=0 inflight_before=1
+warmup done.
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac00659a0 slot=798 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9acc0659a0 slot=461 inflight_before=2
+[AIMD] FinalizeChunkRTT: cc=0x7f9abc017320 slot=109 inflight_before=6
+a100-llm-05:3925727:3925832 [0] NCCL INFO V2MIN: pressure=1.000 (fast=0.140 slow=0.001 dev=0.1389) state=SHRINK window=204 floor=204 high=3337 low=0 ncc=16
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac00659a0 slot=724 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9abc017320 slot=483 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9acc0659a0 slot=203 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9acc0659a0 slot=987 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f9ab8065640 slot=649 inflight_before=6
+a100-llm-05:3925727:3925832 [0] NCCL INFO V2MIN: pressure=1.000 (fast=0.165 slow=0.001 dev=0.1637) state=SHRINK window=204 floor=204 high=8059 low=0 ncc=16
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac8001000 slot=72 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ad40659a0 slot=535 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ad8001000 slot=61 inflight_before=7
+[AIMD] FinalizeChunkRTT: cc=0x7f9ad8001000 slot=742 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac00659a0 slot=138 inflight_before=1
+a100-llm-05:3925727:3925832 [0] NCCL INFO V2MIN: pressure=1.000 (fast=0.103 slow=0.001 dev=0.1016) state=SHRINK window=204 floor=204 high=12777 low=0 ncc=16
+[AIMD] FinalizeChunkRTT: cc=0x7f9abc001000 slot=462 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac8001000 slot=196 inflight_before=3
+[AIMD] FinalizeChunkRTT: cc=0x7f9ad8001000 slot=934 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ac00659a0 slot=498 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9abc001000 slot=340 inflight_before=2
+a100-llm-05:3925727:3925832 [0] NCCL INFO V2MIN: pressure=1.000 (fast=0.156 slow=0.001 dev=0.1551) state=SHRINK window=204 floor=204 high=17489 low=0 ncc=16
+[AIMD] FinalizeChunkRTT: cc=0x7f9abc001000 slot=878 inflight_before=8
+[AIMD] FinalizeChunkRTT: cc=0x7f9ad0001000 slot=480 inflight_before=6
+[AIMD] FinalizeChunkRTT: cc=0x7f9acc0659a0 slot=142 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ab8065640 slot=646 inflight_before=1
+[AIMD] FinalizeChunkRTT: cc=0x7f9ad8001000 slot=154 inflight_before=1
+CSV written to: det_v2_tuned_run5/bench_latency_20260416_182904.csv
+
+========================================
+  Oracle Experiment Results
+========================================
+Config: nDev=8  count=1048576  data=4.19 MB  iters=1000
+NCCL_AIMD_ENABLE=1  NCCL_CC_ORACLE_FACTOR=(unset)
+
+Wall-clock latency (us):
+  mean= 22318.8  stddev= 13994.8
+  p50 = 19962.8  p99   = 63937.8  max= 86893.9
+
+Collective max GPU latency (us):
+  mean= 21672.9  stddev= 13504.6
+  p50 = 19826.7  p99   = 60957.6  max= 75922.4
+
+Rank skew (us):
+  mean=  3264.5  stddev=  4963.7
+  p50 =   286.2  p99   = 19539.5  max= 31123.5
+
+Avg algo bandwidth: 0.33 GB/s
+========================================
+
